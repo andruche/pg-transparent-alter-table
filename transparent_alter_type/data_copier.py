@@ -2,6 +2,9 @@ import datetime
 import time
 
 
+STAT_CYCLE = 60
+
+
 class DataCopier:
     def __init__(self, args, table, db):
         self.args = args
@@ -11,6 +14,16 @@ class DataCopier:
         self.pk_types = self.table['pk_types']
         self.db = db
         self.last_pk = None
+        self.percent_stat_enable = (
+            len(self.pk_columns) == 1 and
+            self.pk_types[0] in ('integer', 'bigint') and
+            self.args.batch_size != 0
+        )
+        self.stat_min_pk = 0
+        self.stat_max_pk = 0
+        self.stat_rows_count = 0
+        self.stat_previous_rows_count = 0
+        self.stat_last_time = time.time()
 
     def log(self, message):
         print(f'{self.table_name}: {message}')
@@ -21,12 +34,16 @@ class DataCopier:
 
     async def copy_data(self, i):
         ts = time.time()
-        self.log(f'copy data: start ({i}: {self.table["pretty_data_size"]})')
+        await self.get_stat_min_max_id()
+        min_max_pks = ''
+        if self.stat_max_pk:
+            min_max_pks = f', pks: {self.stat_min_pk} - {self.stat_max_pk}'
+        self.log(f'copy data {i}: start ({self.table["pretty_data_size"]}{min_max_pks})')
         if self.args.batch_size == 0:
             await self.copy_data_direct()
         else:
             await self.copy_data_batches()
-        self.log(f'copy data: done ({i}: {self.table["pretty_data_size"]}) in {self.duration(ts)}')
+        self.log(f'copy data {i}: done ({self.table["pretty_data_size"]}) in {self.duration(ts)}')
 
     async def copy_data_direct(self):
         await self.db.execute(f'''
@@ -71,6 +88,7 @@ class DataCopier:
         if batch is None or batch['count'] == 0:
             return 0
         self.last_pk = [batch[column] for column in self.pk_columns]
+        self.print_stat(batch['count'])
         return batch['count']
 
     def get_last_pk_value(self, i):
@@ -88,3 +106,31 @@ class DataCopier:
             pk_columns = ', '.join(self.pk_columns)
             pk_values = ', '.join(self.get_last_pk_value(i) for i in range(len(self.pk_columns)))
             return f'({pk_columns}) > ({pk_values})'
+
+    async def get_stat_min_max_id(self):
+        if self.percent_stat_enable:
+            self.stat_min_pk = await self.db.fetchval(f'''
+                select min({self.pk_columns[0]})
+                  from only {self.table_name}
+            ''')
+            self.stat_max_pk = await self.db.fetchval(f'''
+                select max({self.pk_columns[0]})
+                  from only {self.table_name}
+            ''')
+
+    def print_stat(self, count):
+        self.stat_rows_count += count
+        if time.time() - self.stat_last_time > STAT_CYCLE:
+            rows_delta = self.stat_rows_count - self.stat_previous_rows_count
+            time_delta = time.time() - self.stat_last_time
+            last_pk = self.last_pk[0]
+            percent = '-'
+            if self.percent_stat_enable:
+                total_pks = self.stat_max_pk - self.stat_min_pk
+                processed_pks = (last_pk - self.stat_min_pk)
+                percent = round(processed_pks * 100 / total_pks)
+            speed = round(rows_delta / time_delta)
+            self.log(f'copy data: stat (rows copied: {self.stat_rows_count}, last_pk: {last_pk}, '
+                     f'{percent}%, {speed} rows/sec)')
+            self.stat_last_time = time.time()
+            self.stat_previous_rows_count = self.stat_rows_count

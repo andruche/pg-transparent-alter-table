@@ -281,9 +281,9 @@ class TAT:
     async def create_index(self, index_def, i):
         ts = time.time()
         index_name = re.sub('CREATE U?N?I?Q?U?E? ?INDEX (.*) ON .*', '\\1', index_def)
-        self.log(f'create index: {index_name}: start ({i})')
+        self.log(f'create index {i}: {index_name}: start')
         await self.db.execute(index_def)
-        self.log(f'create index: {index_name}: done ({i}) in {self.duration(ts)}')
+        self.log(f'create index {i}: {index_name}: done in {self.duration(ts)}')
 
     async def apply_all_delta(self, con=None):
         ts = time.time()
