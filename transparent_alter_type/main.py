@@ -21,7 +21,7 @@ def main():
     arg_parser.add_argument('--lock-timeout', type=int, default=5)
     arg_parser.add_argument('--time-between-locks', type=int, default=10)
     arg_parser.add_argument('--work-mem', type=str, default='1GB')
-    arg_parser.add_argument('--min-delta-rows', type=int, default=10000)
+    arg_parser.add_argument('--min-delta-rows', type=int, default=100000)
     arg_parser.add_argument('--skip-fk-validation', action='store_true')
     arg_parser.add_argument('--show-queries', action='store_true')
     arg_parser.add_argument('--batch-size', type=int, default=0)

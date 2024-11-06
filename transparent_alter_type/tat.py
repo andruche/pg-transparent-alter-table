@@ -280,18 +280,21 @@ class TAT:
         await self.db.execute(index_def)
         self.log(f'create index: {index_name}: done ({i}) in {self.duration(ts)}')
 
-    async def apply_delta(self, con=None):
-        rows = 0
-        if self.table_kind == TableKind.regular:
-            ts = time.time()
-            self.log('apply_delta: start')
-            if con is None:
-                con = self.db
-            rows = await con.fetchval(f'select "{self.table_name}__apply_delta"();')
-            self.log(f'apply_delta: done: {rows} rows in {self.duration(ts)}')
+    async def apply_all_delta(self, con=None):
+        ts = time.time()
+        self.log('apply_delta: start')
+        rows = await self.apply_table_delta(con)
         for child in self.children:
-            rows += await child.apply_delta(con)
+            rows += await child.apply_table_delta(con)
+        self.log(f'apply_delta: done: {rows} rows in {self.duration(ts)}')
         return rows
+
+    async def apply_table_delta(self, con=None):
+        if self.table_kind != TableKind.regular:
+            return 0
+        if con is None:
+            con = self.db
+        return await con.fetchval(f'select "{self.table_name}__apply_delta"();')
 
     async def analyze(self):
         ts = time.time()
@@ -417,12 +420,12 @@ class TAT:
         self.log('switch table: start')
 
         while True:
-            rows = await self.apply_delta()
+            rows = await self.apply_all_delta()
             if rows <= self.args.min_delta_rows:
                 break
 
-        async with self.exclusive_lock_table() as con:
-            await self.apply_delta(con)
+        async with self.exclusive_lock_table() as con:  # start transaction
+            await self.apply_all_delta(con)
             await self.drop_depend_objects(con)
             await self.cleanup(con, with_tat_new=False)
             await self.detach_foreign_tables(con)
