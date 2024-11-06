@@ -18,6 +18,8 @@ def main():
     arg_parser.add_argument('--create-index-jobs', type=int, default=2)
     arg_parser.add_argument('--force', action='store_true')
     arg_parser.add_argument('--cleanup', action='store_true')
+    arg_parser.add_argument('--no-switch-table', action='store_true')
+    arg_parser.add_argument('--continue-switch-table', action='store_true')
     arg_parser.add_argument('--lock-timeout', type=int, default=5)
     arg_parser.add_argument('--time-between-locks', type=int, default=10)
     arg_parser.add_argument('--work-mem', type=str, default='1GB')

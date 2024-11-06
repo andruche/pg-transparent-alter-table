@@ -500,11 +500,15 @@ class TAT:
 
         self.log(f'start ({self.sum_total_size_pretty})')
         self.check_sub_table()
-        await self.create_new_tables()
-        await self.create_delta_tables()
-        await self.copy_data()
-        await self.create_indexes()
-        await self.analyze()
+        if not self.args.continue_switch_table:
+            await self.create_new_tables()
+            await self.create_delta_tables()
+            await self.copy_data()
+            await self.create_indexes()
+            await self.analyze()
+        if self.args.no_switch_table:
+            self.log('ready to --continue-switch-table')
+            return
         await self.switch_table()
         await self.validate_constraints()
         self.log(f'done in {self.duration(ts)}\n')

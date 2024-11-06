@@ -141,7 +141,8 @@ select tn.table_name as name,
  cross join lateral (select coalesce(array_agg(pg_get_triggerdef(tg.oid) || ';'), '{}') as create_triggers
                        from pg_trigger tg
                       where tg.tgrelid = t.oid and
-                            not tgisinternal) tg
+                            not tgisinternal and
+                            tg.tgname not like '%__tat_delta') tg
  cross join lateral (select array_agg(a.attname) as all_columns,
                             json_object_agg(a.attname, a.atttypid::regtype) as column_types,
                             coalesce(array_agg(format('alter sequence %s owned by %s__tat_new.%s;',
