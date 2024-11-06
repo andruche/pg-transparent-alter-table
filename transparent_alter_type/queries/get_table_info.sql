@@ -1,9 +1,9 @@
 select tn.table_name as name,
        t.relname as name_without_schema,
        t.relkind::text as kind,
-       pg_size_pretty(pg_total_relation_size(t.oid)) as pretty_size,
-       pg_size_pretty(pg_relation_size(t.oid)) as pretty_data_size,
-       pg_relation_size(t.oid) as data_size,
+       pg_size_pretty(ds.data_size) as pretty_data_size,
+       ts.total_size,
+       ds.data_size,
        att.all_columns,
        att.column_types,
        pk.pk_columns,
@@ -35,6 +35,8 @@ select tn.table_name as name,
        pb.publications
   from pg_class t
  cross join lateral (select t.oid::regclass::text as table_name) tn
+ cross join pg_relation_size(t.oid) as ds(data_size)
+ cross join pg_total_relation_size(t.oid) as ts(total_size)
   left join lateral (select format('comment on table %s__tat_new is %L;',
                                    tn.table_name,
                                    d.description) as comment

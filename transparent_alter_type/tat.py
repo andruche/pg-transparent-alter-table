@@ -31,6 +31,7 @@ class TAT:
         self.is_sub_table = is_sub_table
         self.table_name = None
         self.table = None
+        self.sum_total_size_pretty = 0
         self.children = []
         self.columns = [{'column': c.split(':')[0],
                          'type': c.split(':')[1]}
@@ -74,6 +75,9 @@ class TAT:
     def get_query(query_file_name):
         full_file_name = os.path.join(os.path.dirname(__file__), 'queries', query_file_name)
         return open(full_file_name).read()
+
+    async def pretty_size(self, size):
+        return await self.db.fetchval('select pg_size_pretty($1::bigint)', size)
 
     async def get_table_info(self, table=None):
         children = []
@@ -120,8 +124,11 @@ class TAT:
                 TAT(Namespace(**dict(vars(self.args), table_name=child)), True, self.db)
                 for child in children
             ]
+            sum_size = self.table['total_size']
             for child in self.children:
                 await child.get_table_info(tables_data[child.args.table_name])
+                sum_size += child.table['total_size']
+            self.sum_total_size_pretty = await self.pretty_size(sum_size)
 
     async def create_table_new(self):
         if self.table_kind == TableKind.foreign:
@@ -242,7 +249,7 @@ class TAT:
                 size += child.table['data_size']
                 copier = DataCopier(child.args, child.table, child.db)
                 tasks.append(copier.copy_data(i))
-        pretty_size = await self.db.fetchval('select pg_size_pretty($1::bigint)', size)
+        pretty_size = await self.pretty_size(size)
         self.log_border()
         self.log(f'copy data: start ({len(tasks)} tables on {self.args.copy_data_jobs} jobs, size: {pretty_size})')
         await self.run_parallel(tasks, self.args.copy_data_jobs)
@@ -476,7 +483,7 @@ class TAT:
             await self.cleanup()
             return
 
-        self.log(f'start ({self.table["pretty_size"]})')
+        self.log(f'start ({self.sum_total_size_pretty})')
         try:
             self.check_sub_table()
             await self.create_table_new()
