@@ -53,12 +53,13 @@ class TAT:
     async def cancel_autovacuum(self, con=None):
         if con is None:
             con = self.db
+        tables_name = '|'.join(table.table_name for table in [self] + self.children)
         if await con.fetch(f'''
             select pg_cancel_backend(pid)
               from pg_stat_activity
              where state = 'active' and
                    backend_type = 'autovacuum worker' and
-                   query ~ '{self.table_name}';
+                   query ~ '{tables_name}';
         '''):
             self.log('autovacuum canceled')
 
@@ -130,12 +131,17 @@ class TAT:
                 sum_size += child.table['total_size']
             self.sum_total_size_pretty = await self.pretty_size(sum_size)
 
-    async def create_table_new(self):
-        if self.table_kind == TableKind.foreign:
-            return
+    async def create_new_tables(self):
         self.log(f'create {self.table_name}__tat_new')
+        query = f'\n\n'.join(
+            table.create_new_table_query()
+            for table in [self] + self.children
+            if table.table_kind != TableKind.foreign
+        )
+        await self.db.execute(query)
 
-        await self.db.execute(f'''
+    def create_new_table_query(self):
+        commands = [f'''
             create table {self.table_name}__tat_new(
               like {self.table_name}
               including all
@@ -143,86 +149,85 @@ class TAT:
               excluding constraints
               excluding statistics
             ){self.table['partition_expr'] or ''};
-        ''')
-
-        if self.columns:
-            await self.db.execute(
-                ''.join(
-                    '''
-                    alter table {name}__tat_new
-                      alter column {column}
-                        type {type} using ({column}::{type});
-                    '''.format(**self.table, **column)
-                    for column in self.columns
-                )
-            )
-
-        await self.db.execute('\n'.join(self.table['create_check_constraints']))
-        await self.db.execute('\n'.join(self.table['grant_privileges']))
-        await self.db.execute(self.table['comment'])
+        ''']
+        commands.extend(
+            '''
+            alter table {name}__tat_new
+              alter column {column}
+                type {type} using ({column}::{type});
+            '''.format(**self.table, **column)
+            for column in self.columns
+        )
+        commands.extend(self.table['create_check_constraints'])
+        commands.extend(self.table['grant_privileges'])
+        commands.append(self.table['comment'])
         if self.table_kind == TableKind.regular:
-            await self.cancel_autovacuum()
-            await self.db.execute(f'''
-                alter table {self.table_name}          set (autovacuum_enabled = false);
-                alter table {self.table_name}__tat_new set (autovacuum_enabled = false);
-            ''')
+            commands.append(f'alter table {self.table_name}__tat_new set (autovacuum_enabled = false);')
         if self.table['attach_expr']:
-            await self.db.execute(self.table['attach_expr'])
+            commands.append(self.table['attach_expr'])
         elif self.table['inherits']:
-            await self.db.execute(
-                f'alter table {self.table_name}__tat_new inherit {self.table["inherits"][0]}__tat_new'
+            commands.append(
+                f'alter table {self.table_name}__tat_new inherit {self.table["inherits"][0]}__tat_new;'
             )
-        for child in self.children:
-            await child.create_table_new()
+        return '\n'.join(command for command in commands if command)
 
-    async def create_table_delta(self):
-        if self.table_kind == TableKind.regular:
-            self.log(f'create {self.table_name}__tat_delta')
+    async def create_delta_tables(self):
+        self.log(f'create {self.table_name}__tat_delta')
+        query = f'\n\n'.join(
+            table.create_delta_table_query()
+            for table in [self] + self.children
+            if table.table_kind == TableKind.regular
+        )
+        await self.db.execute(query)
 
-            await self.db.execute(f'''
-                create unlogged table {self.table_name}__tat_delta(
-                  like {self.table_name} excluding all)
-            ''')
+        query = f'\n'.join(
+            table.create_delta_trigger_query()
+            for table in [self] + self.children
+            if table.table_kind == TableKind.regular
+        )
+        await self.cancel_autovacuum()
+        await self.db.execute(query)
 
-            await self.db.execute(f'''
-                alter table {self.table_name}__tat_delta
-                  add column tat_delta_id serial,
-                  add column tat_delta_op "char";
-            ''')
+    def create_delta_table_query(self):
+        commands = [f'''
+            create unlogged table {self.table_name}__tat_delta(
+              like {self.table_name} excluding all);
+            alter table {self.table_name}__tat_delta
+              add column tat_delta_id serial,
+              add column tat_delta_op "char";
+        ''']
 
-            query = self.get_query('store_delta.plpgsql')
-            await self.db.execute(query.format(**self.table))
+        query = self.get_query('store_delta.plpgsql')
+        commands.append(query.format(**self.table))
 
-            columns = ', '.join(
-                f'"{column}"'
-                for column in self.table['all_columns']
-            )
-            val_columns = ', '.join(
-                f'r."{column}"'
-                for column in self.table['all_columns']
-            )
-            where = ' and '.join(
-                f't."{column}" = r."{column}"'
-                for column in self.table['pk_columns']
-            )
-            set_columns = ','.join(
-                f'"{column}" = r."{column}"'
-                for column in self.table['all_columns']
-                if column not in self.table['pk_columns']
-            )
+        columns = ', '.join(
+            f'"{column}"'
+            for column in self.table['all_columns']
+        )
+        val_columns = ', '.join(
+            f'r."{column}"'
+            for column in self.table['all_columns']
+        )
+        where = ' and '.join(
+            f't."{column}" = r."{column}"'
+            for column in self.table['pk_columns']
+        )
+        set_columns = ','.join(
+            f'"{column}" = r."{column}"'
+            for column in self.table['all_columns']
+            if column not in self.table['pk_columns']
+        )
 
-            query = self.get_query('apply_delta.plpgsql')
-            await self.db.execute(query.format(**self.table, **locals()))
+        query = self.get_query('apply_delta.plpgsql')
+        commands.append(query.format(**self.table, **locals()))
+        return '\n'.join(commands)
 
-            await self.cancel_autovacuum()
-            await self.db.execute(f'''
-                create trigger store__tat_delta
-                  after insert or delete or update on {self.table_name}
-                  for each row execute procedure "{self.table_name}__store_delta"();
-            ''')
-
-        for child in self.children:
-            await child.create_table_delta()
+    def create_delta_trigger_query(self):
+        return f'''
+            create trigger store__tat_delta
+              after insert or delete or update on {self.table_name}
+              for each row execute procedure "{self.table_name}__store_delta"();
+        '''
 
     @staticmethod
     async def run_parallel(tasks, worker_count):
@@ -381,20 +386,25 @@ class TAT:
                     await con.execute(f'drop table {child.table_name};')
         await con.execute(f'drop table {self.table_name};')
 
-    async def rename_table(self, con):
-        if self.table_kind == TableKind.foreign:
-            return
+    async def rename_tables(self, con):
         self.log(f'rename table {self.table_name}__tat_new -> {self.table_name}')
-        await con.execute(f'alter table {self.table_name}__tat_new rename to {self.table["name_without_schema"]};')
-        await con.execute('\n'.join(self.table['rename_indexes']))
-        await con.execute('\n'.join(self.table['create_constraints']))
-        await con.execute('\n'.join(self.table['create_triggers']))
-        await con.execute(self.table['replica_identity'])
-        await con.execute('\n'.join(self.table['publications']))
-        await con.execute(f'alter table {self.table_name} reset (autovacuum_enabled);')
-        await con.execute('\n'.join(self.table['storage_parameters']))
-        for child in self.children:
-            await child.rename_table(con)
+        query = f'\n\n'.join(
+            table.rename_table_query()
+            for table in [self] + self.children
+            if table.table_kind != TableKind.foreign
+        )
+        await con.execute(query)
+
+    def rename_table_query(self):
+        commands = [f'alter table {self.table_name}__tat_new rename to {self.table["name_without_schema"]};']
+        commands.extend(self.table['rename_indexes'])
+        commands.extend(self.table['create_constraints'])
+        commands.extend(self.table['create_triggers'])
+        commands.append(self.table['replica_identity'])
+        commands.extend(self.table['publications'])
+        commands.append(f'alter table {self.table_name} reset (autovacuum_enabled);')
+        commands.extend(self.table['storage_parameters'])
+        return '\n'.join(command for command in commands if command)
 
     async def recreate_depend_objects(self, con):
         await con.execute('\n'.join(self.table['create_functions']))
@@ -430,7 +440,7 @@ class TAT:
             await self.cleanup(con, with_tat_new=False)
             await self.detach_foreign_tables(con)
             await self.drop_original_table(con)
-            await self.rename_table(con)
+            await self.rename_tables(con)
             await self.attach_foreign_tables(con)
             await self.recreate_depend_objects(con)
         self.log('switch table: done')
@@ -461,10 +471,12 @@ class TAT:
             db = self.db
         for child in reversed(self.children):
             await child.cleanup(db, with_tat_new)
-        await db.execute(f'drop trigger if exists store__tat_delta on {self.table_name};')
-        await db.execute(f'drop function if exists "{self.table_name}__store_delta"();')
-        await db.execute(f'drop function if exists "{self.table_name}__apply_delta"();')
-        await db.execute(f'drop table if exists {self.table_name}__tat_delta;')
+        await db.execute(f'''
+            drop trigger if exists store__tat_delta on {self.table_name};
+            drop function if exists "{self.table_name}__store_delta"();
+            drop function if exists "{self.table_name}__apply_delta"();
+            drop table if exists {self.table_name}__tat_delta;
+        ''')
         if with_tat_new:
             await db.execute(f'drop table if exists {self.table_name}__tat_new;')
 
@@ -487,17 +499,12 @@ class TAT:
             return
 
         self.log(f'start ({self.sum_total_size_pretty})')
-        try:
-            self.check_sub_table()
-            await self.create_table_new()
-            await self.create_table_delta()
-            await self.copy_data()
-            await self.create_indexes()
-            await self.analyze()
-            await self.switch_table()
-        except Exception as e:
-            await self.cancel_autovacuum()
-            await self.db.execute(f'alter table {self.table_name} reset (autovacuum_enabled);')
-            raise e
+        self.check_sub_table()
+        await self.create_new_tables()
+        await self.create_delta_tables()
+        await self.copy_data()
+        await self.create_indexes()
+        await self.analyze()
+        await self.switch_table()
         await self.validate_constraints()
         self.log(f'done in {self.duration(ts)}\n')

@@ -269,7 +269,7 @@ select tn.table_name as name,
                        from pg_partitioned_table p
                       where p.partrelid = t.oid) part
          on true
-  left join format('alter table %s replica identity %s',
+  left join format('alter table %s replica identity %s;',
                     t.oid::regclass,
                     case t.relreplident
                       when 'f'
