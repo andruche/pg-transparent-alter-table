@@ -282,7 +282,14 @@ class TAT:
         ts = time.time()
         index_name = re.sub('CREATE U?N?I?Q?U?E? ?INDEX (.*) ON .*', '\\1', index_def)
         self.log(f'create index {i}: {index_name}: start')
-        await self.db.execute(index_def)
+        try:
+            await self.db.execute(index_def)
+        except asyncpg.exceptions.DuplicateTableError as e:
+            if self.args.continue_create_indexes:
+                self.log(f'create index {i}: {index_name}: skip: {str(e)}')
+                return
+            else:
+                raise e
         self.log(f'create index {i}: {index_name}: done in {self.duration(ts)}')
 
     async def apply_all_delta(self, con=None):
@@ -501,9 +508,10 @@ class TAT:
         self.log(f'start ({self.sum_total_size_pretty})')
         self.check_sub_table()
         if not self.args.continue_switch_table:
-            await self.create_new_tables()
-            await self.create_delta_tables()
-            await self.copy_data()
+            if not self.args.continue_create_indexes:
+                await self.create_new_tables()
+                await self.create_delta_tables()
+                await self.copy_data()
             await self.create_indexes()
             await self.analyze()
         if self.args.no_switch_table:
