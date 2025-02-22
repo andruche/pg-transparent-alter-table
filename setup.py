@@ -4,10 +4,10 @@ from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
 
 PACKAGE_TYPE = 'pg-tools'
-PACKAGE_NAME = 'transparent-alter-type'
-PACKAGE_DESC = 'alter type of column without long locks'
+PACKAGE_NAME = 'pg-transparent-alter-table'
+PACKAGE_DESC = 'alter table without long locks'
 PACKAGE_LONG_DESC = ''
-PACKAGE_VERSION = '3.4.0'
+PACKAGE_VERSION = '4.0.0'
 
 
 class PyTest(TestCommand):
@@ -35,7 +35,7 @@ class PyTest(TestCommand):
 setup_requires = []
 
 install_requires = [
-    'asyncpg>=0.27.0',
+    'asyncpg>=0.27.0,<0.31.0',
     'pg-export>=3.7.0',
 ]
 
@@ -50,7 +50,7 @@ tests_require = [
 ]
 
 console_scripts = [
-    'transparent_alter_type=transparent_alter_type.main:main'
+    'pg_tat=transparent_alter_table.main:main'
 ]
 
 setup(

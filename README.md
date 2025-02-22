@@ -1,11 +1,11 @@
-transparent_alter_type
+pg_transparent_alter_table
 ======================
 
-transparent_alter_type - tools for alter type of columns without locks.
+PostgreQL tools for alter table without locks.
 
 # Installation
 
-$ pip install transparent-alter-type 
+$ pip install pg-transparent-alter-table 
 
 # Dependency
 
@@ -13,33 +13,56 @@ $ pip install transparent-alter-type
 
 # Usage
 
-    usage: transparent_alter_type [--help] -t TABLE_NAME [-c COLUMN] [-h HOST] [-d DBNAME]
-                              [-U USER] [-W PASSWORD] [-p PORT] [--copy-data-jobs COPY_DATA_JOBS] 
-                              [--create-index-jobs CREATE_INDEX_JOBS] [--force]
-                              [--cleanup] [--lock-timeout LOCK_TIMEOUT]
-                              [--time-between-locks TIME_BETWEEN_LOCKS]
-                              [--work-mem WORK_MEM] [--min-delta-rows MIN_DELTA_ROWS]
-                              [--skip-fk-validation] [--show-queries] [--batch-size BATCH_SIZE]
-                              
+    usage: pg_tat [--help] -t TABLE_NAME [-c COMMAND] [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--work-mem WORK_MEM] [--maintenance-work-mem MAINTENANCE_WORK_MEM] [--max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS] [--copy-data-jobs COPY_DATA_JOBS]
+              [--create-index-jobs CREATE_INDEX_JOBS] [--force] [--cleanup] [--continue-create-indexes] [--no-switch-table] [--continue-switch-table] [--lock-timeout LOCK_TIMEOUT] [--time-between-locks TIME_BETWEEN_LOCKS] [--min-delta-rows MIN_DELTA_ROWS] [--skip-fk-validation]
+              [--show-queries] [--batch-size BATCH_SIZE]
+
+    options:
+     --help                show this help message and exit
+     -t TABLE_NAME, --table_name TABLE_NAME
+     -c COMMAND, --command COMMAND
+                           alter table ...
+     -h HOST, --host HOST
+     -d DBNAME, --dbname DBNAME
+     -U USER, --user USER
+     -W PASSWORD, --password PASSWORD
+     -p PORT, --port PORT
+     --work-mem WORK_MEM
+     --maintenance-work-mem MAINTENANCE_WORK_MEM
+     --max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS
+     --copy-data-jobs COPY_DATA_JOBS
+     --create-index-jobs CREATE_INDEX_JOBS
+     --force
+     --cleanup
+     --continue-create-indexes
+     --no-switch-table
+     --continue-switch-table
+     --lock-timeout LOCK_TIMEOUT
+     --time-between-locks TIME_BETWEEN_LOCKS
+     --min-delta-rows MIN_DELTA_ROWS
+     --skip-fk-validation
+     --show-queries
+     --batch-size BATCH_SIZE
 
 # How it works
 
-1. create new tables TABLE_NAME__tat_new (with new column type) and TABLE_NAME__tat_delta
-2. create trigger replicate__tat_delta wich fixing all changes on TABLE_NAME to TABLE_NAME__tat_delta
-3. copy data from TABLE_NAME to TABLE_NAME__tat_new
-4. create indexes for TABLE_NAME__tat_new (in parallel mode on JOBS)
-5. analyze TABLE_NAME__tat_new
-6. apply delta from TABLE_NAME__tat_delta to TABLE_NAME__tat_new (in loop while last rows > MIN_DELTA_ROWS)
-7. begin;
-   drop depend functions, views, constraints;
-   link sequences to TABLE_NAME__tat_new
-   drop table TABLE_NAME;
-   apply delta;
-   rename table TABLE_NAME__tat_new to TABLE_NAME;
-   create depend functions, views, constraints (not valid);
+1. create new tables TABLE_NAME__tat_new (like original) and TABLE_NAME__tat_delta
+1. apply alter table commands
+1. create trigger replicate__tat_delta which fixing all changes on TABLE_NAME to TABLE_NAME__tat_delta
+1. copy data from TABLE_NAME to TABLE_NAME__tat_new
+1. create indexes for TABLE_NAME__tat_new (in parallel mode on JOBS)
+1. analyze TABLE_NAME__tat_new
+1. apply delta from TABLE_NAME__tat_delta to TABLE_NAME__tat_new (in loop while last rows > MIN_DELTA_ROWS)
+1. begin;\
+   drop dependent functions, views, constraints;\
+   link sequences to TABLE_NAME__tat_new\
+   drop table TABLE_NAME;\
+   apply delta;\
+   rename table TABLE_NAME__tat_new to TABLE_NAME;\
+   create dependent functions, views, constraints (not valid);\
    commit;
-8. validate constraints
+1. validate constraints
 
 # Quick examples
 
-    ./transparent_alter_type.py -h 127.0.0.1 -p 5432 -d billing -j 8 -t account -c "balance:numeric(14,4)" -c "dept_limit:numeric(14,4)"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -j 8 -t mytable -c "alter table mytable alter column id type bigint"

@@ -1,17 +1,16 @@
 import asyncio
-import os
 import sys
 import re
 from argparse import Namespace
 from contextlib import asynccontextmanager
 import time
-import datetime
 from enum import Enum
 from typing import List
 
 import asyncpg
 from pg_export.acl import acl_to_grants
 
+from .helper import Helper
 from .data_copier import DataCopier
 from .pg_pool import PgPool
 
@@ -22,63 +21,48 @@ class TableKind(Enum):
     partitioned = 'p'
 
 
-class TAT:
+class TAT(Helper):
     children: List["TAT"]
     table_kind: TableKind
 
     def __init__(self, args, is_sub_table=False, pool=None):
         self.args = args
         self.is_sub_table = is_sub_table
-        self.table_name = None
         self.table = None
         self.sum_total_size_pretty = 0
         self.children = []
-        self.columns = [{'column': c.split(':')[0],
-                         'type': c.split(':')[1]}
-                        for c in args.column]
+        self.commands = list(self.args.command)
+        # self.columns = [{'column': c.split(':')[0],
+        #                  'type': c.split(':')[1]}
+        #                 for c in args.column]
         self.db = pool or PgPool(args)
         self.table_locked = False
 
-    @staticmethod
-    def duration(start_time):
-        return str(datetime.timedelta(seconds=int(time.time() - start_time)))
+    async def run(self):
+        ts = time.time()
+        await self.db.init_pool()
+        await self.get_table_info()
 
-    def log(self, message):
-        print(f'{self.table_name}: {message}')
+        if self.args.cleanup:
+            await self.cancel_autovacuum()
+            await self.cleanup()
+            return
 
-    @staticmethod
-    def log_border():
-        print('-' * 50)
-
-    async def cancel_autovacuum(self, con=None):
-        if con is None:
-            con = self.db
-        tables_name = '|'.join(table.table_name for table in [self] + self.children)
-        if await con.fetch(f'''
-            select pg_cancel_backend(pid)
-              from pg_stat_activity
-             where state = 'active' and
-                   backend_type = 'autovacuum worker' and
-                   query ~ '{tables_name}';
-        '''):
-            self.log('autovacuum canceled')
-
-    async def cancel_all_autovacuum(self, con):
-        if await con.fetch('''
-            select pg_cancel_backend(pid)
-              from pg_stat_activity
-             where state = 'active' and
-                   backend_type = 'autovacuum worker';
-        '''):
-            self.log('autovacuum canceled')
-
-    @staticmethod
-    def get_query(query_file_name):
-        full_file_name = os.path.join(os.path.dirname(__file__), 'queries', query_file_name)
-        return open(full_file_name).read()
-
-    async def pretty_size(self, size):
-        return await self.db.fetchval('select pg_size_pretty($1::bigint)', size)
+        self.log(f'start ({self.sum_total_size_pretty})')
+        self.check_sub_table()
+        if not self.args.continue_switch_table:
+            if not self.args.continue_create_indexes:
+                await self.create_new_tables()
+                await self.create_delta_tables()
+                await self.copy_data()
+            await self.create_indexes()
+            await self.analyze()
+        if self.args.no_switch_table:
+            self.log('ready to --continue-switch-table')
+            return
+        await self.switch_table()
+        await self.validate_constraints()
+        self.log(f'done in {self.duration(ts)}\n')
 
     async def get_table_info(self, table=None):
         children = []
@@ -107,18 +91,18 @@ class TAT:
         if not self.table['pk_columns'] and self.table_kind == TableKind.regular:
             raise Exception(f'table {self.table_name} does not have primary key or not null unique constraint')
 
-        if not self.args.force:
-            columns_to_alter = []
-            for column in self.columns:
-                pg_type = await self.db.fetchval('select $1::regtype', column['type'])
-                if self.table['column_types'][column['column']] == pg_type:
-                    print(f'NOTICE: column {self.table_name}.{column["column"]} already has {pg_type} type')
-                else:
-                    columns_to_alter.append(column)
-            if len(columns_to_alter) == 0:
-                print('no column to alter, use --force to alter anyway')
-                sys.exit(0)
-            self.columns = columns_to_alter
+        # if not self.args.force:
+        #     columns_to_alter = []
+        #     for column in self. columns:
+        #         pg_type = await self.db.fetchval('select $1::regtype', column['type'])
+        #         if self.table['column_types'][column['column']] == pg_type:
+        #             print(f'NOTICE: column {self.table_name}.{column["column"]} already has {pg_type} type')
+        #         else:
+        #             columns_to_alter.append(column)
+        #     if len(columns_to_alter) == 0:
+        #         print('no column to alter, use --force to alter anyway')
+        #         sys.exit(0)
+        #     self. columns = columns_to_alter
 
         if not self.is_sub_table:  # all children are processing on root level
             self.children = [
@@ -140,6 +124,12 @@ class TAT:
         )
         await self.db.execute(query)
 
+    def get_alter_table_commands(self, postfix=''):
+        return (
+            re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command)
+            for command in self.commands
+        )
+
     def create_new_table_query(self):
         commands = [f'''
             create table {self.table_name}__tat_new(
@@ -150,14 +140,8 @@ class TAT:
               excluding statistics
             ){self.table['partition_expr'] or ''};
         ''']
-        commands.extend(
-            '''
-            alter table {name}__tat_new
-              alter column {column}
-                type {type} using ({column}::{type});
-            '''.format(**self.table, **column)
-            for column in self.columns
-        )
+        commands.extend(self.get_alter_table_commands('__tat_new'))
+        print(commands[1])
         commands.extend(self.table['create_check_constraints'])
         commands.extend(self.table['grant_privileges'])
         commands.append(self.table['comment'])
@@ -228,15 +212,6 @@ class TAT:
               after insert or delete or update on {self.table_name}
               for each row execute procedure "{self.table_name}__store_delta"();
         '''
-
-    @staticmethod
-    async def run_parallel(tasks, worker_count):
-        async def worker():
-            while tasks:
-                task = tasks.pop(0)
-                await task
-        workers = [worker() for _ in range(worker_count)]
-        await asyncio.gather(*workers)
 
     async def copy_data(self):
         ts = time.time()
@@ -363,17 +338,8 @@ class TAT:
 
     async def attach_foreign_tables(self, con):
         if self.table_kind == TableKind.foreign:
-            if self.columns:
-                await con.execute(
-                    ''.join(
-                        '''
-                        alter table {name}
-                          alter column {column}
-                            type {type};
-                        '''.format(**self.table, **column)
-                        for column in self.columns
-                    )
-                )
+            if self.commands:
+                await con.execute(''.join(self.get_alter_table_commands()))
             if self.table['attach_foreign_expr']:  # declarative partitioning
                 self.log('attach foreign table')
                 await con.execute(self.table['attach_foreign_expr'])
@@ -494,29 +460,3 @@ class TAT:
                             f'you need alter {parent} instead')
         if self.table['inherits'] and len(self.table['inherits']) > 1:
             raise Exception('Multi inherits not supported')
-
-    async def run(self):
-        ts = time.time()
-        await self.db.init_pool()
-        await self.get_table_info()
-
-        if self.args.cleanup:
-            await self.cancel_autovacuum()
-            await self.cleanup()
-            return
-
-        self.log(f'start ({self.sum_total_size_pretty})')
-        self.check_sub_table()
-        if not self.args.continue_switch_table:
-            if not self.args.continue_create_indexes:
-                await self.create_new_tables()
-                await self.create_delta_tables()
-                await self.copy_data()
-            await self.create_indexes()
-            await self.analyze()
-        if self.args.no_switch_table:
-            self.log('ready to --continue-switch-table')
-            return
-        await self.switch_table()
-        await self.validate_constraints()
-        self.log(f'done in {self.duration(ts)}\n')

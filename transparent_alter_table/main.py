@@ -8,7 +8,7 @@ def main():
     arg_parser = argparse.ArgumentParser(conflict_handler='resolve')
     # TODO show defaults in help
     arg_parser.add_argument('-t', '--table_name', required=True)
-    arg_parser.add_argument('-c', '--column', action='append', help='column:new_type', default=[])
+    arg_parser.add_argument('-c', '--command', action='append', help='alter table ...', default=[])
     arg_parser.add_argument('-h', '--host')
     arg_parser.add_argument('-p', '--port')
     arg_parser.add_argument('-d', '--dbname')

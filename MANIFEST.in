@@ -1,1 +1,1 @@
-recursive-include transparent_alter_type/queries/ *
+recursive-include transparent_alter_table/queries/ *
