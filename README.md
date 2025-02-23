@@ -1,7 +1,7 @@
 pg_tat
 ======================
 
-PostgreQL tool for alter table without locks.
+PostgreSQL tool for alter table without locks.
 
 # Installation
 
