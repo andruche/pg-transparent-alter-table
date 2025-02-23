@@ -7,7 +7,6 @@ from .tat import TAT
 def main():
     arg_parser = argparse.ArgumentParser(conflict_handler='resolve')
     # TODO show defaults in help
-    arg_parser.add_argument('-t', '--table_name', required=True)
     arg_parser.add_argument('-c', '--command', action='append', help='alter table ...', default=[])
     arg_parser.add_argument('-h', '--host')
     arg_parser.add_argument('-p', '--port')
@@ -17,10 +16,9 @@ def main():
     arg_parser.add_argument('-p', '--port')
     arg_parser.add_argument('--work-mem', type=str, default='128MB')
     arg_parser.add_argument('--maintenance-work-mem', type=str, default='4GB')
-    arg_parser.add_argument('--max-parallel-maintenance-workers', type=int)
+    arg_parser.add_argument('--max-parallel-maintenance-workers', type=int, default=0)
     arg_parser.add_argument('--copy-data-jobs', type=int, default=1)
     arg_parser.add_argument('--create-index-jobs', type=int, default=2)
-    arg_parser.add_argument('--force', action='store_true')
     arg_parser.add_argument('--cleanup', action='store_true')
     arg_parser.add_argument('--continue-create-indexes', action='store_true')
     arg_parser.add_argument('--no-switch-table', action='store_true')

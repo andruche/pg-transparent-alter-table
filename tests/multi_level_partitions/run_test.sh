@@ -29,7 +29,7 @@ psql -c "insert into analytics.communication(id, type, duration)
           cross join unnest(enum_range(null::analytics.communication_type_mnemonic)) as type"
 
 # batch mode multi column primary key
-pg_tat -t analytics.communication -c "alter table analytics.communication alter column id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
+pg_tat -c "alter table analytics.communication alter column id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
 
 sleep 1.1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.communication
@@ -48,7 +48,7 @@ psql -c "insert into analytics.page(url)
          select generate_series(1, 1000000)"
 
 # batch mode single column primary key
-pg_tat -t analytics.page -c "alter table analytics.page alter column id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
+pg_tat -c "alter table analytics.page alter column id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
 
 sleep 1.1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.page
@@ -66,7 +66,7 @@ psql -c "insert into analytics.session(page_id, ts, is_loaded, duration)
            from generate_series(1, 1000000) i"
 
 # declarative partitioning
-pg_tat -t analytics.session -c "alter table analytics.session alter column id type bigint, alter column page_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
+pg_tat -c "alter table analytics.session alter column id type bigint, alter column page_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.session
@@ -88,7 +88,7 @@ psql -c "insert into analytics.hit_2024_01(session_id, ts, duration)
            from generate_series(1, 1000000) i"
 
 # old style inheritance partitioning
-pg_tat -t analytics.hit -c "alter table analytics.hit alter column id type bigint, alter column session_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
+pg_tat -c "alter table analytics.hit alter column id type bigint, alter column session_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.hit

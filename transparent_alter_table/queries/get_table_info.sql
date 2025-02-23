@@ -5,7 +5,6 @@ select tn.table_name as name,
        ts.total_size,
        ds.data_size,
        att.all_columns,
-       att.column_types,
        pk.pk_columns,
        pk.pk_types,
        d.comment,
@@ -78,7 +77,7 @@ select tn.table_name as name,
                       limit 1) as pk
          on true
  cross join lateral (select coalesce(array_agg(format(
-                                                 'alter table %s add constraint %s %s using index %s %s %s;',
+                                                 'alter table %s add constraint %s %s using index %s%s%s;',
                                                  tn.table_name,
                                                  uni.conname,
                                                  case
@@ -89,11 +88,11 @@ select tn.table_name as name,
                                                  uni.conname,
                                                  case
                                                    when uni.condeferrable
-                                                     then 'deferrable'
+                                                     then ' deferrable'
                                                  end,
                                                  case
                                                    when uni.condeferred
-                                                     then 'initially deferred'
+                                                     then ' initially deferred'
                                                  end)),
                                      '{}') as create_constraints
                        from pg_constraint uni
@@ -143,8 +142,17 @@ select tn.table_name as name,
                       where tg.tgrelid = t.oid and
                             not tgisinternal and
                             tg.tgname not like '%__tat_delta') tg
- cross join lateral (select array_agg(a.attname) as all_columns,
-                            json_object_agg(a.attname, a.atttypid::regtype) as column_types,
+ cross join lateral (select json_object_agg(
+                              a.attname, json_build_object(
+                                           'type', ft.type,
+                                           'not_null', case
+                                                         when a.attnotnull
+                                                           then ' not null'
+                                                         else ''
+                                                       end,
+                                           'default', coalesce(' default ' || pg_get_expr(cd.adbin, cd.adrelid), ''),
+                                           'collate', coalesce(' collate ' || quote_ident(coll.collname), ''))
+                              order by a.attnum) as all_columns,
                             coalesce(array_agg(format('alter sequence %s owned by %s__tat_new.%s;',
                                                       s.serial_sequence,
                                                       tn.table_name,
@@ -152,6 +160,15 @@ select tn.table_name as name,
                                               filter (where s.serial_sequence is not null),
                                      '{}') as alter_sequences
                        from pg_attribute a
+                      cross join format_type(a.atttypid, a.atttypmod) as ft(type)
+                      inner join pg_type ct
+                              on ct.oid = a.atttypid
+                       left join pg_collation coll
+                              on coll.oid = a.attcollation and
+                                 a.attcollation <> ct.typcollation
+                       left join pg_attrdef cd
+                              on cd.adrelid = a.attrelid and
+                                 cd.adnum = a.attnum
                       cross join pg_get_serial_sequence(tn.table_name, a.attname) as s(serial_sequence)
                       where a.attrelid = t.oid and
                             a.attnum > 0 and

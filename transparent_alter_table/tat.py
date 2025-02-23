@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import re
-from argparse import Namespace
 from contextlib import asynccontextmanager
 import time
 from enum import Enum
@@ -25,17 +24,17 @@ class TAT(Helper):
     children: List["TAT"]
     table_kind: TableKind
 
-    def __init__(self, args, is_sub_table=False, pool=None):
+    def __init__(self, args, is_sub_table=False, pool=None, child_table_name=None):
         self.args = args
         self.is_sub_table = is_sub_table
         self.table = None
         self.sum_total_size_pretty = 0
         self.children = []
-        self.commands = list(self.args.command)
-        # self.columns = [{'column': c.split(':')[0],
-        #                  'type': c.split(':')[1]}
-        #                 for c in args.column]
+        self.commands = [command for command in self.args.command if ' move column ' not in command]
+        self.move_column_commands = [command for command in self.args.command if ' move column ' in command]
+
         self.db = pool or PgPool(args)
+        self.child_table_name = child_table_name
         self.table_locked = False
 
     async def run(self):
@@ -64,13 +63,21 @@ class TAT(Helper):
         await self.validate_constraints()
         self.log(f'done in {self.duration(ts)}\n')
 
+    def get_table_name(self):
+        command = (self.commands or self.move_column_commands)[0]
+        match = re.match('alter table ([^ ]+) ', command)
+        if not match:
+            raise Exception(f'Table name cannot be extracted from the command: {command}')
+        return match.group(1)
+
     async def get_table_info(self, table=None):
         children = []
         tables_data = {}
         if table:
             self.table = table
         else:
-            db_table_name = await self.db.fetchval('select $1::regclass::text', self.args.table_name)
+            command_table_name = self.get_table_name()
+            db_table_name = await self.db.fetchval('select $1::regclass::text', command_table_name)
             children = await self.db.fetchval(
                 self.get_query('get_child_tables.sql'),
                 db_table_name
@@ -91,27 +98,14 @@ class TAT(Helper):
         if not self.table['pk_columns'] and self.table_kind == TableKind.regular:
             raise Exception(f'table {self.table_name} does not have primary key or not null unique constraint')
 
-        # if not self.args.force:
-        #     columns_to_alter = []
-        #     for column in self. columns:
-        #         pg_type = await self.db.fetchval('select $1::regtype', column['type'])
-        #         if self.table['column_types'][column['column']] == pg_type:
-        #             print(f'NOTICE: column {self.table_name}.{column["column"]} already has {pg_type} type')
-        #         else:
-        #             columns_to_alter.append(column)
-        #     if len(columns_to_alter) == 0:
-        #         print('no column to alter, use --force to alter anyway')
-        #         sys.exit(0)
-        #     self. columns = columns_to_alter
-
         if not self.is_sub_table:  # all children are processing on root level
             self.children = [
-                TAT(Namespace(**dict(vars(self.args), table_name=child)), True, self.db)
+                TAT(self.args, True, self.db, child_table_name=child)
                 for child in children
             ]
             sum_size = self.table['total_size']
             for child in self.children:
-                await child.get_table_info(tables_data[child.args.table_name])
+                await child.get_table_info(tables_data[child.child_table_name])
                 sum_size += child.table['total_size']
             self.sum_total_size_pretty = await self.pretty_size(sum_size)
 
@@ -130,18 +124,39 @@ class TAT(Helper):
             for command in self.commands
         )
 
+    def apply_move_colum_commands(self, columns):
+        def parse_command(move_command):
+            match = re.match('.* move column (.+) (before|after) ([^ ;]+)', move_command)
+            if match:
+                return match.groups()
+            else:
+                raise Exception(f"wrong format of command: {cmd}")
+
+        columns = list(columns)
+        for cmd in self.move_column_commands:
+            target, placement, placeholder = parse_command(cmd)
+            if target not in columns:
+                raise Exception(f'moving column "{target}" not found in columns list: {columns}')
+            if placeholder not in columns:
+                raise Exception(f'placeholder column "{placeholder}" not found in columns list: {columns}')
+            columns.remove(target)
+            offset = 0 if placement == 'before' else 1
+            columns.insert(columns.index(placeholder) + offset, target)
+        return columns
+
     def create_new_table_query(self):
+        column_names = self.apply_move_colum_commands(self.table['all_columns'].keys())
+        attr = self.table['all_columns']
+        columns = ',\n              '.join(
+            f'{col} {attr[col]["type"]}{attr[col]["collate"]}{attr[col]["not_null"]}{attr[col]["default"]}'
+            for col in column_names
+        )
         commands = [f'''
             create table {self.table_name}__tat_new(
-              like {self.table_name}
-              including all
-              excluding indexes
-              excluding constraints
-              excluding statistics
+              {columns}
             ){self.table['partition_expr'] or ''};
         ''']
         commands.extend(self.get_alter_table_commands('__tat_new'))
-        print(commands[1])
         commands.extend(self.table['create_check_constraints'])
         commands.extend(self.table['grant_privileges'])
         commands.append(self.table['comment'])
@@ -175,7 +190,8 @@ class TAT(Helper):
     def create_delta_table_query(self):
         commands = [f'''
             create unlogged table {self.table_name}__tat_delta(
-              like {self.table_name} excluding all);
+              like {self.table_name} excluding all
+            );
             alter table {self.table_name}__tat_delta
               add column tat_delta_id serial,
               add column tat_delta_op "char";
@@ -196,7 +212,7 @@ class TAT(Helper):
             f't."{column}" = r."{column}"'
             for column in self.table['pk_columns']
         )
-        set_columns = ','.join(
+        set_columns = ', '.join(
             f'"{column}" = r."{column}"'
             for column in self.table['all_columns']
             if column not in self.table['pk_columns']

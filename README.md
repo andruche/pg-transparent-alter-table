@@ -1,7 +1,7 @@
-pg_transparent_alter_table
+pg_tat
 ======================
 
-PostgreQL tools for alter table without locks.
+PostgreQL tool for alter table without locks.
 
 # Installation
 
@@ -13,13 +13,13 @@ $ pip install pg-transparent-alter-table
 
 # Usage
 
-    usage: pg_tat [--help] -t TABLE_NAME [-c COMMAND] [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--work-mem WORK_MEM] [--maintenance-work-mem MAINTENANCE_WORK_MEM] [--max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS] [--copy-data-jobs COPY_DATA_JOBS]
-              [--create-index-jobs CREATE_INDEX_JOBS] [--force] [--cleanup] [--continue-create-indexes] [--no-switch-table] [--continue-switch-table] [--lock-timeout LOCK_TIMEOUT] [--time-between-locks TIME_BETWEEN_LOCKS] [--min-delta-rows MIN_DELTA_ROWS] [--skip-fk-validation]
-              [--show-queries] [--batch-size BATCH_SIZE]
-
+    usage: pg_tat [--help] [-c COMMAND] [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--work-mem WORK_MEM] [--maintenance-work-mem MAINTENANCE_WORK_MEM]
+                  [--max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS] [--copy-data-jobs COPY_DATA_JOBS] [--create-index-jobs CREATE_INDEX_JOBS] [--cleanup] [--continue-create-indexes]
+                  [--no-switch-table] [--continue-switch-table] [--lock-timeout LOCK_TIMEOUT] [--time-between-locks TIME_BETWEEN_LOCKS] [--min-delta-rows MIN_DELTA_ROWS] [--skip-fk-validation]
+                  [--show-queries] [--batch-size BATCH_SIZE]
+      
     options:
      --help                show this help message and exit
-     -t TABLE_NAME, --table_name TABLE_NAME
      -c COMMAND, --command COMMAND
                            alter table ...
      -h HOST, --host HOST
@@ -32,7 +32,6 @@ $ pip install pg-transparent-alter-table
      --max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS
      --copy-data-jobs COPY_DATA_JOBS
      --create-index-jobs CREATE_INDEX_JOBS
-     --force
      --cleanup
      --continue-create-indexes
      --no-switch-table
@@ -65,4 +64,6 @@ $ pip install pg-transparent-alter-table
 
 # Quick examples
 
-    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -j 8 -t mytable -c "alter table mytable alter column id type bigint"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable alter column id type bigint" 
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable move column a before b"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace new_tablespace"

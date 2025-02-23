@@ -45,10 +45,14 @@ class DataCopier:
             await self.copy_data_batches()
         self.log(f'copy data {i}: done ({self.table["pretty_data_size"]}) in {self.duration(ts)}')
 
+    def get_all_column_list(self):
+        return ', '.join(f'"{column}"' for column in self.table['all_columns'])
+
     async def copy_data_direct(self):
+        all_columns = self.get_all_column_list()
         await self.db.execute(f'''
-            insert into {self.table_name}__tat_new
-              select *
+            insert into {self.table_name}__tat_new({all_columns})
+              select {all_columns}
                 from only {self.table_name}
         ''')
 
@@ -58,6 +62,7 @@ class DataCopier:
             last_batch_size = await self.copy_next_batch()
 
     async def copy_next_batch(self):
+        all_columns = self.get_all_column_list()
         pk_columns = ', '.join(self.pk_columns)
         predicate = self.get_predicate()
         if len(self.pk_columns) == 1:
@@ -74,8 +79,8 @@ class DataCopier:
             '''
         batch = await self.db.fetchrow(f'''
             with batch as (
-              insert into {self.table_name}__tat_new
-                select *
+              insert into {self.table_name}__tat_new({all_columns})
+                select {all_columns}
                   from only {self.table_name}
                  where {predicate}
                  order by {pk_columns}
