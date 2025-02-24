@@ -2,9 +2,6 @@ import datetime
 import time
 
 
-STAT_CYCLE = 60
-
-
 class DataCopier:
     def __init__(self, args, table, db):
         self.args = args
@@ -130,8 +127,10 @@ class DataCopier:
             )
 
     def print_stat(self, count):
+        if self.args.copy_progress_interval <= 0:
+            return
         self.stat_rows_count += count
-        if time.time() - self.stat_last_time > STAT_CYCLE:
+        if time.time() - self.stat_last_time > self.args.copy_progress_interval:
             rows_delta = self.stat_rows_count - self.stat_previous_rows_count
             time_delta = time.time() - self.stat_last_time
             last_pk = self.last_pk[0]

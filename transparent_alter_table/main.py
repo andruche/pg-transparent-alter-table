@@ -19,6 +19,8 @@ def main():
     arg_parser.add_argument('--max-parallel-maintenance-workers', type=int, default=0)
     arg_parser.add_argument('--copy-data-jobs', type=int, default=1)
     arg_parser.add_argument('--batch-size', type=int, default=0)
+    arg_parser.add_argument('--copy-progress-interval', type=int, default=60,
+                            help='print copying statistics each N sec, 0 - disable')
     arg_parser.add_argument('--create-index-jobs', type=int, default=2)
     arg_parser.add_argument('--lock-timeout', type=int, default=5)
     arg_parser.add_argument('--time-between-locks', type=int, default=10)
