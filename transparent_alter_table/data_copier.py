@@ -114,14 +114,20 @@ class DataCopier:
 
     async def get_stat_min_max_id(self):
         if self.percent_stat_enable:
-            self.stat_min_pk = await self.db.fetchval(f'''
+            self.stat_min_pk = await self.db.fetchval(
+                f'''
                 select min({self.pk_columns[0]})
                   from only {self.table_name}
-            ''')
-            self.stat_max_pk = await self.db.fetchval(f'''
+                ''',
+                readonly=True
+            )
+            self.stat_max_pk = await self.db.fetchval(
+                f'''
                 select max({self.pk_columns[0]})
                   from only {self.table_name}
-            ''')
+                ''',
+                readonly=True
+            )
 
     def print_stat(self, count):
         self.stat_rows_count += count

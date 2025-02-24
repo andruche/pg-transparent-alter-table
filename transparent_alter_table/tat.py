@@ -77,17 +77,19 @@ class TAT(Helper):
             self.table = table
         else:
             command_table_name = self.get_table_name()
-            db_table_name = await self.db.fetchval('select $1::regclass::text', command_table_name)
+            db_table_name = await self.db.fetchval('select $1::regclass::text', command_table_name, readonly=True)
             children = await self.db.fetchval(
                 self.get_query('get_child_tables.sql'),
-                db_table_name
+                db_table_name,
+                readonly=True
             )
             table_names = [db_table_name] + children
             tables_data = {
                 table['name']: table
                 for table in await self.db.fetch(
                     self.get_query('get_table_info.sql'),
-                    table_names
+                    table_names,
+                    readonly=True
                 )
             }
             self.table = tables_data[db_table_name]
@@ -124,7 +126,7 @@ class TAT(Helper):
             for command in self.commands
         )
 
-    def apply_move_colum_commands(self, columns):
+    def apply_move_column_commands(self, columns):
         def parse_command(move_command):
             match = re.match('.* move column (.+) (before|after) ([^ ;]+)', move_command)
             if match:
@@ -145,7 +147,7 @@ class TAT(Helper):
         return columns
 
     def create_new_table_query(self):
-        column_names = self.apply_move_colum_commands(self.table['all_columns'].keys())
+        column_names = self.apply_move_column_commands(self.table['all_columns'].keys())
         attr = self.table['all_columns']
         columns = ',\n              '.join(
             f'{col} {attr[col]["type"]}{attr[col]["collate"]}{attr[col]["not_null"]}{attr[col]["default"]}'
@@ -286,9 +288,9 @@ class TAT(Helper):
     async def apply_all_delta(self, con=None):
         ts = time.time()
         self.log('apply_delta: start')
-        rows = await self.apply_table_delta(con)
+        rows = await self.apply_table_delta(con) or 0
         for child in self.children:
-            rows += await child.apply_table_delta(con)
+            rows += await child.apply_table_delta(con) or 0
         self.log(f'apply_delta: done: {rows} rows in {self.duration(ts)}')
         return rows
 

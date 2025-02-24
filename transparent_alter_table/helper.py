@@ -12,7 +12,7 @@ class Helper:
     children: list
 
     async def pretty_size(self, size):
-        return await self.db.fetchval('select pg_size_pretty($1::bigint)', size)
+        return await self.db.fetchval('select pg_size_pretty($1::bigint)', size, readonly=True)
 
     @staticmethod
     def duration(start_time):

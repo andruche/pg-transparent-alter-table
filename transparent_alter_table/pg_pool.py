@@ -4,40 +4,46 @@ from contextlib import asynccontextmanager
 import asyncpg
 
 
-def print_query(query, args):
+def print_query(query, args, executed):
     if args:
         args = f', {args=}'
     else:
         args = ''
-    print(f'\033[33mQUERY: {query}{args}\033[0m\n')
+    print(f'\033[33mQUERY{executed}: {query}{args}\033[0m\n')
 
 
 class ConnectWrapper:
-    def __init__(self, con, show_queries=False):
+    def __init__(self, con, args):
         self.con = con
-        self.show_queries = show_queries
+        self.args = args
 
-    def show_query(self, query, args):
-        if not self.show_queries:
+    def show_query(self, query, args, readonly):
+        if not self.args.echo_queries:
             return
-        print_query(query, args)
+        if readonly:
+            return
+        executed = ' (not executed)' if self.args.dry_run and not readonly else ''
+        print_query(query, args, executed)
 
-    async def execute(self, query, *args):
+    async def execute(self, query, *args, readonly=False):
         if not query:
             return
-        self.show_query(query, args)
-        return await self.con.execute(query, *args)
+        self.show_query(query, args, readonly)
+        if not self.args.dry_run or readonly:
+            return await self.con.execute(query, *args)
 
-    async def fetch(self, query, *args):
-        self.show_query(query, args)
-        return await self.con.fetch(query, *args)
+    async def fetch(self, query, *args, readonly=False):
+        self.show_query(query, args, readonly)
+        if not self.args.dry_run or readonly:
+            return await self.con.fetch(query, *args)
 
-    async def fetchrow(self, query, *args):
-        self.show_query(query, args)
-        return await self.con.fetchrow(query, *args)
+    async def fetchrow(self, query, *args, readonly=False):
+        self.show_query(query, args, readonly)
+        if not self.args.dry_run or readonly:
+            return await self.con.fetchrow(query, *args)
 
-    async def fetchval(self, query, *args):
-        res = await self.fetchrow(query, *args)
+    async def fetchval(self, query, *args, readonly=False):
+        res = await self.fetchrow(query, *args, readonly=readonly)
         if res:
             return res[0]
 
@@ -76,30 +82,36 @@ class PgPool:
             init=init_connection
         )
 
-    def show_query(self, query, args):
-        if not self.args.show_queries:
+    def show_query(self, query, args, readonly):
+        if not self.args.echo_queries:
             return
-        print_query(query, args)
+        if readonly:
+            return
+        executed = ' (not executed)' if self.args.dry_run and not readonly else ''
+        print_query(query, args, executed)
 
-    async def execute(self, query, *args):
+    async def execute(self, query, *args, readonly=False):
         if not query:
             return
         async with self.pool.acquire() as con:
-            self.show_query(query, args)
-            return await con.execute(query, *args)
+            self.show_query(query, args, readonly)
+            if not self.args.dry_run or readonly:
+                return await con.execute(query, *args)
 
-    async def fetch(self, query, *args):
+    async def fetch(self, query, *args, readonly=False):
         async with self.pool.acquire() as con:
-            self.show_query(query, args)
-            return await con.fetch(query, *args)
+            self.show_query(query, args, readonly)
+            if not self.args.dry_run or readonly:
+                return await con.fetch(query, *args)
 
-    async def fetchrow(self, query, *args):
+    async def fetchrow(self, query, *args, readonly=False):
         async with self.pool.acquire() as con:
-            self.show_query(query, args)
-            return await con.fetchrow(query, *args)
+            self.show_query(query, args, readonly)
+            if not self.args.dry_run or readonly:
+                return await con.fetchrow(query, *args)
 
-    async def fetchval(self, query, *args):
-        res = await self.fetchrow(query, *args)
+    async def fetchval(self, query, *args, readonly=False):
+        res = await self.fetchrow(query, *args, readonly=readonly)
         if res:
             return res[0]
 
@@ -107,4 +119,4 @@ class PgPool:
     async def transaction(self) -> asyncpg.Connection:
         async with self.pool.acquire() as con:
             async with con.transaction():
-                yield ConnectWrapper(con, self.args.show_queries)
+                yield ConnectWrapper(con, self.args)
