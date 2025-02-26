@@ -3,7 +3,7 @@
 export PGPASSWORD=123456
 export PGUSER=postgres
 export PGHOST=0.0.0.0
-export PGPORT=5432
+export PGPORT=15432
 export PGDATABASE=tat_test
 PG_VERSION=15
 
@@ -66,7 +66,7 @@ psql -c "insert into analytics.session(page_id, ts, is_loaded, duration)
            from generate_series(1, 1000000) i"
 
 # declarative partitioning
-pg_tat -c "alter table analytics.session alter column id type bigint, alter column page_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
+pg_tat -c "alter table analytics.session alter column id type bigint using id::bigint" -c "alter table analytics.session alter column page_id type bigint using page_id::bigint" --copy-data-jobs 2 --create-index-jobs 4 &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.session
@@ -88,7 +88,7 @@ psql -c "insert into analytics.hit_2024_01(session_id, ts, duration)
            from generate_series(1, 1000000) i"
 
 # old style inheritance partitioning
-pg_tat -c "alter table analytics.hit alter column id type bigint, alter column session_id type bigint;" --copy-data-jobs 2 --create-index-jobs 4 &
+pg_tat -c "alter table analytics.hit alter column id type bigint" -c "alter table analytics.hit alter column session_id type bigint" --copy-data-jobs 2 --create-index-jobs 4 &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update analytics.hit

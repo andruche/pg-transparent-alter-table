@@ -30,8 +30,17 @@ class TAT(Helper):
         self.table = None
         self.sum_total_size_pretty = 0
         self.children = []
-        self.commands = [command for command in self.args.command if ' move column ' not in command]
-        self.move_column_commands = [command for command in self.args.command if ' move column ' in command]
+        self.commands = [
+            command.strip('; \t')
+            for command in self.args.command
+            if ' move column ' not in command
+        ]
+        self.move_column_commands = [
+            command.strip('; \t')
+            for command in self.args.command
+            if ' move column ' in command
+        ]
+        self.using_expr = self.get_alter_type_using_expr()
 
         self.db = pool or PgPool(args)
         self.child_table_name = child_table_name
@@ -69,6 +78,13 @@ class TAT(Helper):
         if not match:
             raise Exception(f'Table name cannot be extracted from the command: {command}')
         return match.group(1)
+
+    def get_alter_type_using_expr(self):
+        return {
+            match.group(1): match.group(2)
+            for command in self.commands
+            if (match := re.match('.* alter column ([^ ]+) type .* using (.*);?', command))
+        }
 
     async def get_table_info(self, table=None):
         children = []
@@ -121,10 +137,11 @@ class TAT(Helper):
         await self.db.execute(query)
 
     def get_alter_table_commands(self, postfix=''):
-        return (
-            re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command) + ';'
-            for command in self.commands
-        )
+        for command in self.commands:
+            command = re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command) + ';'
+            if self.table_kind == TableKind.foreign:
+                command = re.sub(f' using .*', '', command) + ';'
+            yield command
 
     def apply_move_column_commands(self, columns):
         def parse_command(move_command):
@@ -192,6 +209,11 @@ class TAT(Helper):
         await self.db.execute(query)
 
     def create_delta_table_query(self):
+        def apply_using_exp(column):
+            if column in self.using_expr:
+                return re.sub(f'\\b{column}\\b', f'r.{column}', self.using_expr[column])
+            return f'r."{column}"'
+
         commands = [f'''
             create unlogged table {self.table_name}__tat_delta(
               like {self.table_name} excluding all
@@ -210,15 +232,15 @@ class TAT(Helper):
             for column in self.table['all_columns']
         )
         val_columns = ', '.join(
-            f'r."{column}"'
+            apply_using_exp(column)
             for column in self.table['all_columns']
         )
         where = ' and '.join(
-            f't."{column}" = r."{column}"'
+            f't."{column}" = {apply_using_exp(column)}'
             for column in self.table['pk_columns']
         )
         set_columns = ', '.join(
-            f'"{column}" = r."{column}"'
+            f'"{column}" = {apply_using_exp(column)}'
             for column in self.table['all_columns']
             if column not in self.table['pk_columns']
         )
@@ -230,9 +252,18 @@ class TAT(Helper):
     def create_delta_trigger_query(self):
         return f'''
             create trigger store__tat_delta
-              after insert or delete or update on {self.table_name}
+              after insert or update or delete on {self.table_name}
               for each row execute procedure "{self.table_name}__store_delta"();
         '''.replace('            ', '')
+
+    def get_all_column_names(self):
+        return ', '.join(f'"{column}"' for column in self.table['all_columns'])
+
+    def get_all_column_values(self):
+        return ', '.join(
+            self.using_expr.get(column, f'"{column}"')
+            for column in self.table['all_columns']
+        )
 
     async def copy_data(self):
         ts = time.time()
@@ -242,13 +273,13 @@ class TAT(Helper):
         if self.table_kind == TableKind.regular:
             i += 1
             size += self.table['data_size']
-            copier = DataCopier(self.args, self.table, self.db)
+            copier = DataCopier(self)
             tasks.append(copier.copy_data(i))
         for child in self.children:
             if child.table_kind == TableKind.regular:
                 i += 1
                 size += child.table['data_size']
-                copier = DataCopier(child.args, child.table, child.db)
+                copier = DataCopier(child)
                 tasks.append(copier.copy_data(i))
         pretty_size = await self.pretty_size(size)
         self.log_border()
@@ -360,7 +391,7 @@ class TAT(Helper):
     async def attach_foreign_tables(self, con):
         if self.table_kind == TableKind.foreign:
             if self.commands:
-                await con.execute(''.join(self.get_alter_table_commands()))
+                await con.execute('\n'.join(self.get_alter_table_commands()))
             if self.table['attach_foreign_expr']:  # declarative partitioning
                 self.log('attach foreign table')
                 await con.execute(self.table['attach_foreign_expr'])

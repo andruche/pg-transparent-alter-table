@@ -3,13 +3,14 @@ import time
 
 
 class DataCopier:
-    def __init__(self, args, table, db):
-        self.args = args
-        self.table = table
+    def __init__(self, tat):
+        self.tat = tat
+        self.args = tat.args
+        self.table = tat.table
+        self.db = tat.db
         self.table_name = self.table['name']
         self.pk_columns = self.table['pk_columns']
         self.pk_types = self.table['pk_types']
-        self.db = db
         self.last_pk = None
         self.percent_stat_enable = (
             len(self.pk_columns) == 1 and
@@ -42,15 +43,14 @@ class DataCopier:
             await self.copy_data_batches()
         self.log(f'copy data {i}: done ({self.table["pretty_data_size"]}) in {self.duration(ts)}')
 
-    def get_all_column_list(self):
-        return ', '.join(f'"{column}"' for column in self.table['all_columns'])
-
     async def copy_data_direct(self):
-        all_columns = self.get_all_column_list()
+        column_names = self.tat.get_all_column_names()
+        column_values = self.tat.get_all_column_values()
+
         await self.db.execute(
             f'''
-            insert into {self.table_name}__tat_new({all_columns})
-              select {all_columns}
+            insert into {self.table_name}__tat_new({column_names})
+              select {column_values}
                 from only {self.table_name}
             '''.replace('            ', '')
         )
@@ -61,7 +61,8 @@ class DataCopier:
             last_batch_size = await self.copy_next_batch()
 
     async def copy_next_batch(self):
-        all_columns = self.get_all_column_list()
+        column_names = self.tat.get_all_column_names()
+        column_values = self.tat.get_all_column_values()
         pk_columns = ', '.join(self.pk_columns)
         predicate = self.get_predicate()
         if len(self.pk_columns) == 1:
@@ -79,8 +80,8 @@ class DataCopier:
         batch = await self.db.fetchrow(
             f'''
             with batch as (
-              insert into {self.table_name}__tat_new({all_columns})
-                select {all_columns}
+              insert into {self.table_name}__tat_new({column_names})
+                select {column_values}
                   from only {self.table_name}
                  where {predicate}
                  order by {pk_columns}
