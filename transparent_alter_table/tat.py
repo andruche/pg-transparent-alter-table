@@ -122,7 +122,7 @@ class TAT(Helper):
 
     def get_alter_table_commands(self, postfix=''):
         return (
-            re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command)
+            re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command) + ';'
             for command in self.commands
         )
 
@@ -153,11 +153,13 @@ class TAT(Helper):
             f'{col} {attr[col]["type"]}{attr[col]["collate"]}{attr[col]["not_null"]}{attr[col]["default"]}'
             for col in column_names
         )
-        commands = [f'''
+        commands = [
+            f'''
             create table {self.table_name}__tat_new(
               {columns}
             ){self.table['partition_expr'] or ''};
-        ''']
+            '''.replace('            ', '')
+        ]
         commands.extend(self.get_alter_table_commands('__tat_new'))
         commands.extend(self.table['create_check_constraints'])
         commands.extend(self.table['grant_privileges'])
@@ -194,10 +196,11 @@ class TAT(Helper):
             create unlogged table {self.table_name}__tat_delta(
               like {self.table_name} excluding all
             );
+
             alter table {self.table_name}__tat_delta
               add column tat_delta_id serial,
               add column tat_delta_op "char";
-        ''']
+        '''.replace('            ', '')]
 
         query = self.get_query('store_delta.plpgsql')
         commands.append(query.format(**self.table))
@@ -229,7 +232,7 @@ class TAT(Helper):
             create trigger store__tat_delta
               after insert or delete or update on {self.table_name}
               for each row execute procedure "{self.table_name}__store_delta"();
-        '''
+        '''.replace('            ', '')
 
     async def copy_data(self):
         ts = time.time()
@@ -462,12 +465,14 @@ class TAT(Helper):
             db = self.db
         for child in reversed(self.children):
             await child.cleanup(db, with_tat_new)
-        await db.execute(f'''
+        await db.execute(
+            f'''
             drop trigger if exists store__tat_delta on {self.table_name};
             drop function if exists "{self.table_name}__store_delta"();
             drop function if exists "{self.table_name}__apply_delta"();
             drop table if exists {self.table_name}__tat_delta;
-        ''')
+            '''.replace('            ', '')
+        )
         if with_tat_new:
             await db.execute(f'drop table if exists {self.table_name}__tat_new;')
 

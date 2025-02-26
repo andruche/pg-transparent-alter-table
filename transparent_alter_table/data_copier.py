@@ -47,11 +47,13 @@ class DataCopier:
 
     async def copy_data_direct(self):
         all_columns = self.get_all_column_list()
-        await self.db.execute(f'''
+        await self.db.execute(
+            f'''
             insert into {self.table_name}__tat_new({all_columns})
               select {all_columns}
                 from only {self.table_name}
-        ''')
+            '''.replace('            ', '')
+        )
 
     async def copy_data_batches(self):
         last_batch_size = await self.copy_next_batch()
@@ -74,7 +76,8 @@ class DataCopier:
                           from batch) x
                  where x.row_number = x.count
             '''
-        batch = await self.db.fetchrow(f'''
+        batch = await self.db.fetchrow(
+            f'''
             with batch as (
               insert into {self.table_name}__tat_new({all_columns})
                 select {all_columns}
@@ -85,7 +88,8 @@ class DataCopier:
               returning {pk_columns}
             )
             {select_query}
-        ''')
+            '''.replace('            ', '')
+        )
 
         if batch is None or batch['count'] == 0:
             return 0

@@ -29,22 +29,26 @@ class Helper:
         if con is None:
             con = self.db
         tables_name = '|'.join(table.table_name for table in [self] + self.children)
-        if await con.fetch(f'''
+        if await con.fetch(
+            f'''
             select pg_cancel_backend(pid)
               from pg_stat_activity
              where state = 'active' and
                    backend_type = 'autovacuum worker' and
                    query ~ '{tables_name}';
-        '''):
+            '''.replace('            ', '')
+        ):
             self.log('autovacuum canceled')
 
     async def cancel_all_autovacuum(self, con):
-        if await con.fetch('''
+        if await con.fetch(
+            '''
             select pg_cancel_backend(pid)
               from pg_stat_activity
              where state = 'active' and
                    backend_type = 'autovacuum worker';
-        '''):
+            '''.replace('            ', '')
+        ):
             self.log('autovacuum canceled')
 
     @staticmethod
