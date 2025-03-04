@@ -490,7 +490,10 @@ class TAT(Helper):
             loop_ts = time.time()
             constraint_name = re.sub('alter table (.*) validate constraint (.*);', '\\1: \\2', constraint)
             self.log(f'validate constraint: {constraint_name}: start')
-            await self.db.execute(constraint)
+            try:
+                await self.db.execute(constraint)
+            except asyncpg.exceptions.ForeignKeyViolationError as e:
+                self.log(f'ERROR: {str(e)}\nCONSTRAINT: {constraint}')
             self.log(f'validate constraint: {constraint_name}: done in {self.duration(loop_ts)}')
         self.log(f'validate constraints: done in {self.duration(ts)}')
 
