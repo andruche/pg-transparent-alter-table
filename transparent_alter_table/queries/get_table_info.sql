@@ -151,7 +151,12 @@ select tn.table_name as name,
                                                          else ''
                                                        end,
                                            'default', coalesce(' default ' || pg_get_expr(cd.adbin, cd.adrelid), ''),
-                                           'collate', coalesce(' collate ' || quote_ident(coll.collname), ''))
+                                           'collate', coalesce(' collate ' || quote_ident(coll.collname), ''),
+                                           'comment', case
+                                                        when cc.description is not null
+                                                          then format('comment on column %s__tat_new.%I is %L;',
+                                                                      a.attrelid::regclass, a.attname, cc.description)
+                                                      end)
                               order by a.attnum) as all_columns,
                             coalesce(array_agg(format('alter sequence %s owned by %s__tat_new.%s;',
                                                       s.serial_sequence,
@@ -169,6 +174,10 @@ select tn.table_name as name,
                        left join pg_attrdef cd
                               on cd.adrelid = a.attrelid and
                                  cd.adnum = a.attnum
+                       left join pg_description cc
+                              on cc.objoid = a.attrelid and
+                                 cc.classoid = 'pg_class'::regclass and
+                                 cc.objsubid = a.attnum
                       cross join pg_get_serial_sequence(tn.table_name, a.attname) as s(serial_sequence)
                       where a.attrelid = t.oid and
                             a.attnum > 0 and

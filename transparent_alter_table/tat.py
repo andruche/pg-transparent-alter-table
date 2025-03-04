@@ -181,6 +181,9 @@ class TAT(Helper):
         commands.extend(self.table['create_check_constraints'])
         commands.extend(self.table['grant_privileges'])
         commands.append(self.table['comment'])
+        for column in self.table['all_columns'].values():
+            if column['comment']:
+                commands.append(column['comment'])
         if self.table_kind == TableKind.regular:
             commands.append(f'alter table {self.table_name}__tat_new set (autovacuum_enabled = false);')
         if self.table['attach_expr']:
