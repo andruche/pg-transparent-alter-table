@@ -5,6 +5,8 @@ create table analytics.hit (
   duration integer
 );
 
+grant insert, delete on table analytics.hit to user2;
+
 alter table analytics.hit add constraint pk_hit
   primary key (id);
 

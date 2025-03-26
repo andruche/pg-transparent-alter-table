@@ -21,7 +21,9 @@ sleep 1.5
 docker exec -u postgres $container_name mkdir /var/lib/postgresql/archive_data
 
 echo "build src database"
-psql -c "create database $PGDATABASE" -d postgres
+psql -c "create role user1;" -d postgres
+psql -c "create role user2;" -d postgres
+psql -c "create database $PGDATABASE;" -d postgres
 psql -c "create tablespace archive location '/var/lib/postgresql/archive_data';"
 pg_import source_database -d $PGDATABASE
 

@@ -7,7 +7,7 @@ from enum import Enum
 from typing import List
 
 import asyncpg
-from pg_export.acl import acl_to_grants
+from .acl import acl_to_grants
 
 from .helper import Helper
 from .data_copier import DataCopier

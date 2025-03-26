@@ -5,11 +5,8 @@ from setuptools.command.test import test as TestCommand
 
 from pg_transparent_alter_table import __version__
 
-PACKAGE_TYPE = 'pg-tools'
 PACKAGE_NAME = 'pg-transparent-alter-table'
 PACKAGE_DESC = 'alter table without long locks'
-PACKAGE_LONG_DESC = ''
-PACKAGE_VERSION = __version__
 
 
 class PyTest(TestCommand):
@@ -38,7 +35,6 @@ setup_requires = []
 
 install_requires = [
     'asyncpg>=0.27.0,<0.31.0',
-    'pg-export>=3.7.0',
 ]
 
 tests_require = [
@@ -57,9 +53,8 @@ console_scripts = [
 
 setup(
     name=PACKAGE_NAME,
-    version=PACKAGE_VERSION,
+    version=__version__,
     description=PACKAGE_DESC,
-    long_description=PACKAGE_LONG_DESC,
     url='https://github.com/andruche/pg-transparent-alter-table',
     author="Andrey Chernyakov",
     author_email="andruuche@gmail.com",

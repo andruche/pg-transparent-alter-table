@@ -3,6 +3,8 @@ create table analytics.page (
   url integer
 );
 
+grant select, update on table analytics.page to user1;
+
 alter table analytics.page add constraint pk_page
   primary key (id);
 
