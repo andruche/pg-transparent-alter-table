@@ -50,7 +50,7 @@ tests_require = [
 ]
 
 console_scripts = [
-    'pg_tat=transparent_alter_table.main:main'
+    'pg_tat=pg_transparent_alter_table.main:main'
 ]
 
 setup(

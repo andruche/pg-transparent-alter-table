@@ -1,1 +1,1 @@
-recursive-include transparent_alter_table/queries/ *
+recursive-include pg_transparent_alter_table/queries/ *

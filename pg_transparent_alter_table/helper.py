@@ -3,7 +3,7 @@ import os
 import datetime
 import time
 
-from transparent_alter_table.pg_pool import PgPool
+from .pg_pool import PgPool
 
 
 class Helper:
