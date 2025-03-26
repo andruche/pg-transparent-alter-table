@@ -3,11 +3,13 @@ import sys
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
 
+from pg_transparent_alter_table import __version__
+
 PACKAGE_TYPE = 'pg-tools'
 PACKAGE_NAME = 'pg-transparent-alter-table'
 PACKAGE_DESC = 'alter table without long locks'
 PACKAGE_LONG_DESC = ''
-PACKAGE_VERSION = '4.2.0'
+PACKAGE_VERSION = __version__
 
 
 class PyTest(TestCommand):

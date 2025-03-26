@@ -2,18 +2,20 @@ import argparse
 import asyncio
 
 from .tat import TAT
+from . import __version__
 
 
 def main():
     arg_parser = argparse.ArgumentParser(conflict_handler='resolve')
     # TODO show defaults in help
-    arg_parser.add_argument('-c', '--command', action='append', help='alter table ...', default=[])
+    arg_parser.add_argument('-c', '--command', required=True, action='append', help='alter table...', default=[])
     arg_parser.add_argument('-h', '--host')
     arg_parser.add_argument('-p', '--port')
     arg_parser.add_argument('-d', '--dbname')
     arg_parser.add_argument('-U', '--user')
     arg_parser.add_argument('-W', '--password')
     arg_parser.add_argument('-p', '--port')
+    arg_parser.add_argument('--version', action='version', version=__version__)
     arg_parser.add_argument('--work-mem', type=str, default='128MB')
     arg_parser.add_argument('--maintenance-work-mem', type=str, default='4GB')
     arg_parser.add_argument('--max-parallel-maintenance-workers', type=int, default=0)
