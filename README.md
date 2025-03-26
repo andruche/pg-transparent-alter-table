@@ -13,39 +13,50 @@ $ pip install pg-transparent-alter-table
 
 # Usage
 
-    usage: pg_tat [--help] [-c COMMAND] [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--work-mem WORK_MEM] [--maintenance-work-mem MAINTENANCE_WORK_MEM]
-                  [--max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS] [--copy-data-jobs COPY_DATA_JOBS] [--create-index-jobs CREATE_INDEX_JOBS] [--cleanup] [--continue-create-indexes]
-                  [--no-switch-table] [--continue-switch-table] [--lock-timeout LOCK_TIMEOUT] [--time-between-locks TIME_BETWEEN_LOCKS] [--min-delta-rows MIN_DELTA_ROWS] [--skip-fk-validation]
-                  [--show-queries] [--batch-size BATCH_SIZE]
-      
+    usage: pg_tat [--help] -c COMMAND [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--version] [--maintenance-work-mem SIZE] [--max-parallel-maintenance-workers PG_WORKERS] [--copy-data-jobs JOBS] [--batch-size ROWS]
+                  [--copy-progress-interval SEC] [--create-index-jobs JOBS] [--lock-timeout SEC] [--time-between-locks SEC] [--min-delta-rows ROWS] [--cleanup] [--continue-create-indexes] [--no-switch-table]
+                  [--continue-switch-table] [--skip-fk-validation] [--dry-run] [--echo-queries] [--partial-mode]
+
     options:
-     --help                show this help message and exit
-     -c COMMAND, --command COMMAND
-                           alter table ...
-     -h HOST, --host HOST
-     -d DBNAME, --dbname DBNAME
-     -U USER, --user USER
-     -W PASSWORD, --password PASSWORD
-     -p PORT, --port PORT
-     --work-mem WORK_MEM
-     --maintenance-work-mem MAINTENANCE_WORK_MEM
-     --max-parallel-maintenance-workers MAX_PARALLEL_MAINTENANCE_WORKERS
-     --copy-data-jobs COPY_DATA_JOBS
-     --create-index-jobs CREATE_INDEX_JOBS
-     --cleanup
-     --continue-create-indexes
-     --no-switch-table
-     --continue-switch-table
-     --lock-timeout LOCK_TIMEOUT
-     --time-between-locks TIME_BETWEEN_LOCKS
-     --min-delta-rows MIN_DELTA_ROWS
-     --skip-fk-validation
-     --show-queries
-     --batch-size BATCH_SIZE
+      --help                show this help message and exit
+      -c COMMAND, --command COMMAND
+                            "alter table mytable ...", least at one required
+      -h HOST, --host HOST
+      -d DBNAME, --dbname DBNAME
+      -U USER, --user USER
+      -W PASSWORD, --password PASSWORD
+      -p PORT, --port PORT
+      --version             show program's version number and exit
+      --maintenance-work-mem SIZE
+                            PostgreSQL parameter (default: 2GB)
+      --max-parallel-maintenance-workers PG_WORKERS
+                            PostgreSQL parameter (default: 0)
+      --copy-data-jobs JOBS
+                            run JOBS parallel "insert into" commands (default: 1)
+      --batch-size ROWS     copying data by ROWS, when 0 all data will copied at once (default: 0)
+      --copy-progress-interval SEC
+                            print copying statistics each SEC seconds, 0 - disable (default: 60)
+      --create-index-jobs JOBS
+                            run JOBS parallel "create index" commands (default: 2)
+      --lock-timeout SEC    try to get lock table SEC seconds before lock timeout error (default: 5)
+      --time-between-locks SEC
+                            wait SEC seconds between attempts to lock table (default: 10)
+      --min-delta-rows ROWS
+                            switch table when last applied delta less than ROWS (default: 100000)
+      --cleanup             drop all temp objects and exit
+      --continue-create-indexes
+                            use only when break after coping data done!
+      --no-switch-table     copy data and create index only
+      --continue-switch-table
+                            use only when break after all create index done!
+      --skip-fk-validation  print validation commands instead execute
+      --dry-run             test run without real changes
+      --echo-queries        echo commands sent to server
+      --partial-mode        allow alter part of partitioned table
 
 # How it works
 
-1. create new tables TABLE_NAME__tat_new (like original) and TABLE_NAME__tat_delta
+1. create new tables TABLE_NAME__tat_new (like original) and TABLE_NAME__tat_delta (for changes)
 1. apply alter table commands
 1. create trigger replicate__tat_delta which fixing all changes on TABLE_NAME to TABLE_NAME__tat_delta
 1. copy data from TABLE_NAME to TABLE_NAME__tat_new

@@ -64,7 +64,6 @@ class PgPool:
                 decoder=json.loads,
             )
             await con.execute(f"set lock_timeout = '{self.args.lock_timeout}s';")
-            await con.execute(f"set work_mem = '{self.args.work_mem}';")
             await con.execute(f"set maintenance_work_mem = '{self.args.maintenance_work_mem}';")
             if self.args.max_parallel_maintenance_workers is not None:
                 await con.execute(f"set max_parallel_maintenance_workers = "
