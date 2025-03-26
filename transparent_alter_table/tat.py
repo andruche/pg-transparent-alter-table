@@ -114,7 +114,8 @@ class TAT(Helper):
         self.table_name = self.table['name']
 
         if not self.table['pk_columns'] and self.table_kind == TableKind.regular:
-            raise Exception(f'table {self.table_name} does not have primary key or not null unique constraint')
+            print(f'table {self.table_name} does not have primary key or not null unique constraint', file=sys.stderr)
+            exit(1)
 
         if not self.is_sub_table:  # all children are processing on root level
             self.children = [
@@ -140,6 +141,8 @@ class TAT(Helper):
         for command in self.commands:
             command = re.sub('alter table [^ ]+ ', f'alter table {self.table_name}{postfix} ', command) + ';'
             if self.table_kind == TableKind.foreign:
+                if ' set tablespace ' in command:
+                    continue
                 command = re.sub(f' using .*', '', command) + ';'
             yield command
 
@@ -149,15 +152,18 @@ class TAT(Helper):
             if match:
                 return match.groups()
             else:
-                raise Exception(f"wrong format of command: {cmd}")
+                print(f"wrong format of command: {cmd}", file=sys.stderr)
+                exit(1)
 
         columns = list(columns)
         for cmd in self.move_column_commands:
             target, placement, placeholder = parse_command(cmd)
             if target not in columns:
-                raise Exception(f'moving column "{target}" not found in columns list: {columns}')
+                print(f'moving column "{target}" not found in columns list: {columns}', file=sys.stderr)
+                exit(1)
             if placeholder not in columns:
-                raise Exception(f'placeholder column "{placeholder}" not found in columns list: {columns}')
+                print(f'placeholder column "{placeholder}" not found in columns list: {columns}', file=sys.stderr)
+                exit(1)
             columns.remove(target)
             offset = 0 if placement == 'before' else 1
             columns.insert(columns.index(placeholder) + offset, target)
@@ -186,12 +192,17 @@ class TAT(Helper):
                 commands.append(column['comment'])
         if self.table_kind == TableKind.regular:
             commands.append(f'alter table {self.table_name}__tat_new set (autovacuum_enabled = false);')
-        if self.table['attach_expr']:
-            commands.append(self.table['attach_expr'])
-        elif self.table['inherits']:
-            commands.append(
-                f'alter table {self.table_name}__tat_new inherit {self.table["inherits"][0]}__tat_new;'
-            )
+        if self.is_sub_table:
+            parent = self.table['inherits'][0]
+            if self.table['attach_expr']:
+                expr = self.table["attach_expr"]
+                commands.append(
+                    f'alter table {parent}__tat_new attach partition {self.table_name}__tat_new {expr};'
+                )
+            else:
+                commands.append(
+                    f'alter table {self.table_name}__tat_new inherit {parent}__tat_new;'
+                )
         return '\n'.join(command for command in commands if command)
 
     async def create_delta_tables(self):
@@ -351,8 +362,11 @@ class TAT(Helper):
             async with self.db.transaction() as con:
                 await self.cancel_autovacuum(con)
                 self.log('lock table: start')
+                parent = ''
+                if self.table['inherits'] and not self.is_sub_table:
+                    parent = f'{self.table["inherits"][0]}, '
                 try:
-                    await con.execute(f'lock table {self.table_name} in access exclusive mode;')
+                    await con.execute(f'lock table {parent}{self.table_name} in access exclusive mode;')
                     self.log('lock table: done')
                     self.table_locked = True
                     yield con
@@ -380,13 +394,16 @@ class TAT(Helper):
 
     async def detach_foreign_tables(self, con):
         if self.table_kind == TableKind.foreign:
-            if self.table['detach_foreign_expr']:  # declarative partitioning
+            parent = self.table["inherits"][0]
+            if self.table['attach_expr']:  # declarative partitioning
                 self.log('detach foreign table')
-                await con.execute(self.table['detach_foreign_expr'])
+                await con.execute(
+                    f'alter table only {parent} detach partition {self.table_name};'
+                )
             else:   # old style inherits partitioning
                 self.log('no inherit foreign table')
                 await con.execute(
-                    f'alter table {self.table_name} no inherit {self.table["inherits"][0]}'
+                    f'alter table {self.table_name} no inherit {parent};'
                 )
         for child in self.children:
             await child.detach_foreign_tables(con)
@@ -395,13 +412,17 @@ class TAT(Helper):
         if self.table_kind == TableKind.foreign:
             if self.commands:
                 await con.execute('\n'.join(self.get_alter_table_commands()))
-            if self.table['attach_foreign_expr']:  # declarative partitioning
+            parent = self.table['inherits'][0]
+            if self.table['attach_expr']:  # declarative partitioning
                 self.log('attach foreign table')
-                await con.execute(self.table['attach_foreign_expr'])
+                expr = self.table["attach_expr"]
+                await con.execute(
+                    f'alter table {parent} attach partition {self.table_name} {expr}'
+                )
             else:  # old style inherits partitioning
                 self.log('inherit foreign table')
                 await con.execute(
-                    f'alter table {self.table_name} inherit {self.table["inherits"][0]}'
+                    f'alter table {self.table_name} inherit {parent}'
                 )
         for child in self.children:
             await child.attach_foreign_tables(con)
@@ -422,6 +443,19 @@ class TAT(Helper):
             if table.table_kind != TableKind.foreign
         )
         await con.execute(query)
+
+    async def attach_to_parent(self, con):
+        if self.table['inherits'] and not self.is_sub_table:
+            parent = self.table["inherits"][0]
+            if self.table['attach_expr']:
+                expr = self.table["attach_expr"]
+                await con.execute(
+                    f'alter table {parent} attach partition {self.table_name} {expr};'
+                )
+            else:
+                await con.execute(
+                    f'alter table {self.table_name} inherit {parent};'
+                )
 
     def rename_table_query(self):
         commands = [f'alter table {self.table_name}__tat_new rename to {self.table["name_without_schema"]};']
@@ -469,6 +503,7 @@ class TAT(Helper):
             await self.detach_foreign_tables(con)
             await self.drop_original_table(con)
             await self.rename_tables(con)
+            await self.attach_to_parent(con)
             await self.attach_foreign_tables(con)
             await self.recreate_depend_objects(con)
         self.log('switch table: done')
@@ -514,9 +549,12 @@ class TAT(Helper):
             await db.execute(f'drop table if exists {self.table_name}__tat_new;')
 
     def check_sub_table(self):
-        if self.table['inherits'] and not self.is_sub_table:
+        if self.table['inherits'] and not self.is_sub_table and not self.args.partial_mode:
             parent = self.table['inherits'][0]
-            raise Exception(f'table {self.table_name} is partition of table {parent}, '
-                            f'you need alter {parent} instead')
+            print(f'table {self.table_name} is partition of table {parent}, '
+                  f'you need to alter {parent} or use key --partial-mode',
+                  file=sys.stderr)
+            exit(1)
         if self.table['inherits'] and len(self.table['inherits']) > 1:
-            raise Exception('Multi inherits not supported')
+            print('Multi inherits not supported', file=sys.stderr)
+            exit(1)

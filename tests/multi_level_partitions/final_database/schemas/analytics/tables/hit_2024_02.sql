@@ -4,7 +4,8 @@ create table analytics.hit_2024_02 (
   ts timestamp without time zone not null,
   duration integer
 )
-inherits (analytics.hit);
+inherits (analytics.hit)
+tablespace archive;
 
 alter table analytics.hit_2024_02 add constraint pk_hit_2024_02
   primary key (id);

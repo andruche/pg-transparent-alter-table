@@ -6,8 +6,9 @@ export PGHOST=0.0.0.0
 export PGPORT=15432
 export PGDATABASE=tat_test
 PG_VERSION=15
+container_name=pg_tat_test
 
-docker rm -f pg_tat_test
+docker rm -f $container_name
 
 set -e
 
@@ -15,12 +16,14 @@ if [ $# -eq 1 ]; then
     PG_VERSION=$1
 fi
 
-docker run --name pg_tat_test --tmpfs=/var/lib/postgresql -p $PGPORT:5432 -e POSTGRES_PASSWORD=$PGPASSWORD -d postgres:$PG_VERSION
+docker run --name $container_name --tmpfs=/var/lib/postgresql -p $PGPORT:5432 -e POSTGRES_PASSWORD=$PGPASSWORD -d postgres:$PG_VERSION
 sleep 1.5
+docker exec -u postgres $container_name mkdir /var/lib/postgresql/archive_data
+
 echo "build src database"
 psql -c "create database $PGDATABASE" -d postgres
+psql -c "create tablespace archive location '/var/lib/postgresql/archive_data';"
 pg_import source_database -d $PGDATABASE
-psql -f source_database/publications/logical_replica.sql
 
 echo "======================================================="
 psql -c "insert into analytics.communication(id, type, duration)
@@ -103,8 +106,14 @@ psql -c "insert into analytics.hit_2023_12(session_id, ts, duration)
          select i % 200 + 1, '2023-12-01'::date + (random() * 20)::int,  i % 10
            from generate_series(1, 100) i"
 wait
-echo
-echo "======================================================="
+
+echo "================ alter partition table ======================="
+pg_tat -c "alter table analytics.session_noloaded set tablespace archive" --partial-mode
+
+echo "================ alter child table ======================="
+pg_tat -c "alter table analytics.hit_2024_02 set tablespace archive" --partial-mode
+
+echo "==================== tests result ==========================="
 echo "diff table structure:"
 pg_export $PGDATABASE /tmp/exp_tat_test
 diff -x "public.sql" -qr /tmp/exp_tat_test/schemas/ final_database/schemas && echo " all tables: ok"

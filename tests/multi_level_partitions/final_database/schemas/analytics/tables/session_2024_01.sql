@@ -4,7 +4,8 @@ create table analytics.session_2024_01 (
   ts timestamp without time zone not null,
   is_loaded boolean not null,
   duration integer
-);
+)
+tablespace archive;
 
 alter table only analytics.session_noloaded attach partition analytics.session_2024_01 for values from ('2024-01-01 00:00:00') to ('2024-02-01 00:00:00');
 

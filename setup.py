@@ -7,7 +7,7 @@ PACKAGE_TYPE = 'pg-tools'
 PACKAGE_NAME = 'pg-transparent-alter-table'
 PACKAGE_DESC = 'alter table without long locks'
 PACKAGE_LONG_DESC = ''
-PACKAGE_VERSION = '4.1.1'
+PACKAGE_VERSION = '4.2.0'
 
 
 class PyTest(TestCommand):
@@ -69,6 +69,7 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
     zip_safe=False,
     packages=find_packages(exclude=['tests', 'examples', '.reports']),

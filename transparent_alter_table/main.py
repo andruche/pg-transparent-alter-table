@@ -32,6 +32,7 @@ def main():
     arg_parser.add_argument('--skip-fk-validation', action='store_true')
     arg_parser.add_argument('--dry-run', action='store_true')
     arg_parser.add_argument('--echo-queries', action='store_true')
+    arg_parser.add_argument('--partial-mode', action='store_true')
     args = arg_parser.parse_args()
 
     t = TAT(args)

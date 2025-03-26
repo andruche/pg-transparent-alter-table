@@ -5,6 +5,7 @@ create table analytics.session_noloaded (
   is_loaded boolean not null,
   duration integer
 )
-partition by range (ts);
+partition by range (ts)
+tablespace archive;
 
 alter table only analytics.session attach partition analytics.session_noloaded for values in (false, NULL);
