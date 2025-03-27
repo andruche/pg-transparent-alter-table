@@ -5,7 +5,7 @@ $ cd transparent_alter_type
 $ python3.10 -m venv .ve
 $ source .ve/bin/activate
 $ pip install -e .
-$ cd tests/multi_level_partitions
+$ cd tests/regress
 $ ./run_test.sh 11
 $ ./run_test.sh 12
 $ ./run_test.sh 13
