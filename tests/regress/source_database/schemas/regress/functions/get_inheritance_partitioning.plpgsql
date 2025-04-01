@@ -1,0 +1,9 @@
+create or replace function regress.get_inheritance_partitioning() returns SETOF regress.inheritance_partitioning as $$
+begin
+  select *
+    from regress.inheritance_partitioning;
+end;
+$$ language plpgsql;
+
+revoke all on function regress.get_inheritance_partitioning() from public;
+grant all on function regress.get_inheritance_partitioning() to user2;
