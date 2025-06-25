@@ -13,9 +13,13 @@ $ pip install pg-transparent-alter-table
 
 # Usage
 
-    usage: pg_tat [--help] -c COMMAND [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--version] [--maintenance-work-mem SIZE] [--max-parallel-maintenance-workers PG_WORKERS] [--copy-data-jobs JOBS] [--batch-size ROWS]
-                  [--copy-progress-interval SEC] [--create-index-jobs JOBS] [--lock-timeout SEC] [--time-between-locks SEC] [--min-delta-rows ROWS] [--cleanup] [--continue-create-indexes] [--no-switch-table]
-                  [--continue-switch-table] [--skip-fk-validation] [--dry-run] [--echo-queries] [--partial-mode]
+    usage: pg_tat [--help] -c COMMAND [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--version]
+                  [--maintenance-work-mem SIZE] [--max-parallel-maintenance-workers PG_WORKERS]
+                  [--copy-data-jobs JOBS] [--batch-size ROWS] [--copy-progress-interval SEC]
+                  [--create-index-jobs JOBS] [--lock-timeout SEC] [--time-between-locks SEC] [--min-delta-rows ROWS]
+                  [--cleanup] [--continue-create-indexes] [--no-switch-table] [--continue-switch-table]
+                  [--skip-fk-validation] [--dry-run] [--echo-queries] [--partial-mode]
+                  [--command-before-switch COMMAND] [--command-after-switch COMMAND]
 
     options:
       --help                show this help message and exit
@@ -53,6 +57,10 @@ $ pip install pg-transparent-alter-table
       --dry-run             test run without real changes
       --echo-queries        echo commands sent to server
       --partial-mode        allow alter part of partitioned table
+      --command-before-switch COMMAND
+                            execute COMMAND (or "\i file_path") before switch table (in the same transaction)
+      --command-after-switch COMMAND
+                            execute COMMAND (or "\i file_path") after switch table (in the same transaction)
 
 # How it works
 

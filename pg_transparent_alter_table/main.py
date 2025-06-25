@@ -62,6 +62,14 @@ def main():
                             help='echo commands sent to server')
     arg_parser.add_argument('--partial-mode', action='store_true',
                             help='allow alter part of partitioned table')
+    arg_parser.add_argument('--command-before-switch', action='append',
+                            metavar='COMMAND',
+                            default=[],
+                            help='execute COMMAND (or "\\i file_path") before switch table (in the same transaction)')
+    arg_parser.add_argument('--command-after-switch', action='append',
+                            metavar='COMMAND',
+                            default=[],
+                            help='execute COMMAND (or "\\i file_path") after switch table (in the same transaction)')
     args = arg_parser.parse_args()
 
     t = TAT(args)

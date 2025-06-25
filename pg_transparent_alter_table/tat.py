@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import re
 from contextlib import asynccontextmanager
@@ -487,6 +488,22 @@ class TAT(Helper):
         for child in self.children:
             await child.recreate_depend_objects(con)
 
+    async def run_command_around_switch(self, con, place):
+        if place == 'before':
+            commands = self.args.command_before_switch
+        else:
+            commands = self.args.command_after_switch
+        if commands:
+            self.log(f'run command {place} switch')
+            for command in commands:
+                if command.startswith('\\i '):  # \i - like psql include command
+                    file_path = command[3:]
+                    if file_path.startswith('~'):
+                        file_path = os.path.expanduser(file_path)
+                    with open(file_path) as f:
+                        command = f.read()
+                await con.execute(command)
+
     async def switch_table(self):
         self.log_border()
         self.log('switch table: start')
@@ -498,6 +515,7 @@ class TAT(Helper):
 
         async with self.exclusive_lock_table() as con:  # start transaction
             await self.apply_all_delta(con)
+            await self.run_command_around_switch(con, 'before')
             await self.drop_depend_objects(con)
             await self.cleanup(con, with_tat_new=False)
             await self.detach_foreign_tables(con)
@@ -506,6 +524,7 @@ class TAT(Helper):
             await self.attach_to_parent(con)
             await self.attach_foreign_tables(con)
             await self.recreate_depend_objects(con)
+            await self.run_command_around_switch(con, 'after')
         self.log('switch table: done')
 
     async def validate_constraints(self):
