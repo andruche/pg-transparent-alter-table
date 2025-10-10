@@ -174,7 +174,7 @@ class TAT(Helper):
         column_names = self.apply_move_column_commands(self.table['all_columns'].keys())
         attr = self.table['all_columns']
         columns = ',\n              '.join(
-            f'{col} {attr[col]["type"]}{attr[col]["collate"]}{attr[col]["not_null"]}{attr[col]["default"]}'
+            f'"{col}" {attr[col]["type"]}{attr[col]["collate"]}{attr[col]["not_null"]}{attr[col]["default"]}'
             for col in column_names
         )
         commands = [
