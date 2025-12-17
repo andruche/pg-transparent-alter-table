@@ -3,6 +3,8 @@ import time
 
 
 class DataCopier:
+    TYPE_UNSUPPORTED_MAX_AGG_FUNC = {"uuid"}
+
     def __init__(self, tat):
         self.tat = tat
         self.args = tat.args
@@ -11,6 +13,9 @@ class DataCopier:
         self.table_name = self.table['name']
         self.pk_columns = self.table['pk_columns']
         self.pk_types = self.table['pk_types']
+        self.pk_support_max_agg = self.TYPE_UNSUPPORTED_MAX_AGG_FUNC.isdisjoint(
+            set(self.table['pk_types'])
+        )
         self.last_pk = None
         self.percent_stat_enable = (
             len(self.pk_columns) == 1 and
@@ -65,18 +70,18 @@ class DataCopier:
         column_values = self.tat.get_all_column_values()
         pk_columns = ', '.join(self.pk_columns)
         predicate = self.get_predicate()
-        if len(self.pk_columns) == 1:
+        if len(self.pk_columns) == 1 and self.pk_support_max_agg:
             select_query = f'''
                 select max({self.pk_columns[0]}) as {self.pk_columns[0]}, count(1)
                   from batch
-            '''
+            '''.replace('                ', '').lstrip()
         else:
             select_query = f'''
                 select {pk_columns}, count
                   from (select {pk_columns}, row_number() over (), count(1) over ()
                           from batch) x
                  where x.row_number = x.count
-            '''
+            '''.replace('                ', '').lstrip()
         batch = await self.db.fetchrow(
             f'''
             with batch as (

@@ -68,6 +68,25 @@ psql -c "insert into regress.directory(val)
          select generate_series(1, 100)"
 wait
 
+
+echo "==================== uuid pk table ======================="
+psql -c "insert into regress.uuid_pk_table(val)
+         select generate_series(1, 1000000)"
+
+# batch mode single column primary key uuid type
+pg_tat -c "alter table regress.uuid_pk_table alter column val type bigint;" --batch-size 100000 &
+
+sleep 1.1  # the following 3 commands will be executed in parallel with transparent_alter_type
+psql -c "update regress.uuid_pk_table
+            set val = val + 20
+          where val between 20 and 30"
+psql -c "delete from regress.uuid_pk_table
+          where val > 200"
+psql -c "insert into regress.uuid_pk_table(val)
+         select generate_series(1, 100)"
+wait
+
+
 echo "======================================================="
 psql -c "insert into regress.multi_level_partitioning(directory_id, ts, is_loaded, duration)
          select i % 200 + 1, '2024-01-01'::date + (random() * 58)::int, random() < 0.1, i % 10
@@ -146,6 +165,14 @@ psql -t -c "select 'regress.directory: ' ||
                      else 'FAILED'
                    end
               from regress.directory" | grep -v "^$"
+
+psql -t -c "select 'regress.uuid_pk_table: ' ||
+                   case
+                     when count(1) = 300 and sum(val) = 25370
+                       then 'ok'
+                     else 'FAILED'
+                   end
+              from regress.uuid_pk_table" | grep -v "^$"
 
 psql -t -c "select 'regress.multi_level_partitioning: ' ||
                    case

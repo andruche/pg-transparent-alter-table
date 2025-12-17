@@ -4,6 +4,7 @@ $ git clone https://github.com/comagic/transparent_alter_type.git
 $ cd transparent_alter_type
 $ python3.10 -m venv .ve
 $ source .ve/bin/activate
+$ pip install pg-import pg-export
 $ pip install -e .
 $ cd tests/regress
 $ ./run_test.sh 11
