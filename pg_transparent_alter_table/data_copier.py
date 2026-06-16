@@ -51,12 +51,16 @@ class DataCopier:
     async def copy_data_direct(self):
         column_names = self.tat.get_all_column_names()
         column_values = self.tat.get_all_column_values()
+        data_filter = self.get_data_filter()
+        if data_filter:
+            data_filter = f"where {data_filter}"
 
         await self.db.execute(
             f'''
             insert into {self.table_name}__tat_new({column_names})
               select {column_values}
-                from only {self.table_name}
+                from only {self.table_name} as src
+                {data_filter}
             '''.replace('            ', '')
         )
 
@@ -87,7 +91,7 @@ class DataCopier:
             with batch as (
               insert into {self.table_name}__tat_new({column_names})
                 select {column_values}
-                  from only {self.table_name}
+                  from only {self.table_name} as src
                  where {predicate}
                  order by {pk_columns}
                  limit {self.args.batch_size}
@@ -109,15 +113,24 @@ class DataCopier:
             return str(self.last_pk[i])
         return f"'{self.last_pk[i]}'::{col_type}"
 
+    def get_data_filter(self):
+        if self.args.copy_data_filter:
+            return self.args.copy_data_filter
+        return ''
+
     def get_predicate(self):
+        data_filter = self.get_data_filter()
+        if data_filter:
+            data_filter = f" and {data_filter}"
+
         if self.last_pk is None:
-            return 'true'
+            return f"true {data_filter}"
         if len(self.pk_columns) == 1:
-            return f"{self.pk_columns[0]} > {self.get_last_pk_value(0)}"
+            return f"{self.pk_columns[0]} > {self.get_last_pk_value(0)} {data_filter}"
         else:
             pk_columns = ', '.join(self.pk_columns)
             pk_values = ', '.join(self.get_last_pk_value(i) for i in range(len(self.pk_columns)))
-            return f'({pk_columns}) > ({pk_values})'
+            return f"({pk_columns}) > ({pk_values}) {data_filter}"
 
     async def get_stat_min_max_id(self):
         if self.percent_stat_enable:

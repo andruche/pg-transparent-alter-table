@@ -5,7 +5,7 @@ PostgreSQL tool for alter table without locks.
 
 # Installation
 
-$ pip install pg-transparent-alter-table 
+$ pip install pg-transparent-alter-table
 
 # Dependency
 
@@ -15,7 +15,7 @@ $ pip install pg-transparent-alter-table
 
     usage: pg_tat [--help] -c COMMAND [-h HOST] [-d DBNAME] [-U USER] [-W PASSWORD] [-p PORT] [--version]
                   [--maintenance-work-mem SIZE] [--max-parallel-maintenance-workers PG_WORKERS]
-                  [--copy-data-jobs JOBS] [--batch-size ROWS] [--copy-progress-interval SEC]
+                  [--copy-data-jobs JOBS] [--batch-size ROWS] [--copy-progress-interval SEC] [--copy-data-filter PREDICATE]
                   [--create-index-jobs JOBS] [--lock-timeout SEC] [--time-between-locks SEC] [--min-delta-rows ROWS]
                   [--cleanup] [--continue-create-indexes] [--no-switch-table] [--continue-switch-table]
                   [--skip-fk-validation] [--dry-run] [--echo-queries] [--partial-mode]
@@ -40,6 +40,8 @@ $ pip install pg-transparent-alter-table
       --batch-size ROWS     copying data by ROWS, when 0 all data will copied at once (default: 0)
       --copy-progress-interval SEC
                             print copying statistics each SEC seconds, 0 - disable (default: 60)
+      --copy-data-filter PREDICATE
+                            copy only data that matches the predicate ("src" alias is available for the original table)
       --create-index-jobs JOBS
                             run JOBS parallel "create index" commands (default: 2)
       --lock-timeout SEC    try to get lock table SEC seconds before lock timeout error (default: 5)
@@ -83,6 +85,7 @@ $ pip install pg-transparent-alter-table
 
 # Quick examples
 
-    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable alter column id type bigint" 
-    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable move column a before b"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable alter column id type bigint"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable move column a before b" --batch-size 100000
     $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace new_tablespace"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace default" --copy-data-filter "src.action_time > '2026-01-01'"

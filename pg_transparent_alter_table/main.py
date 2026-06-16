@@ -7,7 +7,8 @@ from . import __version__
 
 def main():
     arg_parser = argparse.ArgumentParser(
-        conflict_handler='resolve'
+        conflict_handler='resolve',
+        epilog = 'Report bugs: https://github.com/andruche/pg-transparent-alter-table/issues',
     )
     # TODO show defaults in help
     arg_parser.add_argument('-c', '--command', required=True, action='append', default=argparse.SUPPRESS,
@@ -34,6 +35,10 @@ def main():
     arg_parser.add_argument('--copy-progress-interval', type=int, default=60,
                             metavar='SEC',
                             help='print copying statistics each SEC seconds, 0 - disable (default: %(default)s)')
+    arg_parser.add_argument('--copy-data-filter', type=str,
+                            metavar='PREDICATE',
+                            help='copy only data that matches the predicate '
+                                 '("src" alias is available for the original table)')
     arg_parser.add_argument('--create-index-jobs', type=int, default=2,
                             metavar='JOBS',
                             help='run JOBS parallel "create index" commands (default: %(default)s)')

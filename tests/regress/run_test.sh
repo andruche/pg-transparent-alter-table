@@ -54,16 +54,20 @@ echo "======================================================="
 psql -c "insert into regress.directory(val)
          select generate_series(1, 1000000)"
 
+psql -c "insert into regress.directory(val)
+         select i * -1
+           from generate_series(1, 100) as i"
+
 # batch mode single column primary key
 pg_tat -c "alter table regress.directory alter column id type bigint;" \
-       --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
+       --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 --copy-data-filter "src.val >= 0" &
 
 sleep 1.1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update regress.directory
             set val = val + 20
           where id between 20 and 30"
 psql -c "delete from regress.directory
-          where id > 200"
+          where id > 200 and val >= 0"
 psql -c "insert into regress.directory(val)
          select generate_series(1, 100)"
 wait
@@ -95,7 +99,7 @@ psql -c "insert into regress.multi_level_partitioning(directory_id, ts, is_loade
 # declarative multi level partitioning
 pg_tat -c "alter table regress.multi_level_partitioning alter column id type bigint using id::bigint" \
        -c "alter table regress.multi_level_partitioning alter column directory_id type bigint using directory_id::bigint" \
-       --copy-data-jobs 2 --create-index-jobs 4 &
+       --copy-data-jobs 2 --create-index-jobs 4 --batch-size 100000 &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update regress.multi_level_partitioning
@@ -117,15 +121,20 @@ psql -c "insert into regress.inheritance_partitioning_2024_01(ts, val)
          select '2024-01-01'::date + (random() * 20)::int,  i % 10
            from generate_series(1, 1000000) i"
 
+psql -c "insert into regress.inheritance_partitioning_2024_01(ts, val)
+         select '2024-01-01'::date + (random() * 20)::int,  i * -1
+           from generate_series(1, 100) i"
+
 # old style inheritance partitioning
-pg_tat -c "alter table regress.inheritance_partitioning alter column id type bigint" --copy-data-jobs 2 --create-index-jobs 4 &
+pg_tat -c "alter table regress.inheritance_partitioning alter column id type bigint" \
+       --copy-data-jobs 2 --create-index-jobs 4 --copy-data-filter "src.val >= 0" &
 
 sleep 1  # the following 3 commands will be executed in parallel with transparent_alter_type
 psql -c "update regress.inheritance_partitioning
             set val = val + 20
           where id < 1000"
 psql -c "delete from regress.inheritance_partitioning
-          where id > 2000"
+          where id > 2000 and val >= 0"
 psql -c "insert into regress.inheritance_partitioning_2024_02(ts, val)
          select '2024-02-01'::date + (random() * 20)::int,  i % 10
            from generate_series(1, 1000) i"
