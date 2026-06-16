@@ -88,4 +88,4 @@ $ pip install pg-transparent-alter-table
     $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable alter column id type bigint"
     $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable move column a before b" --batch-size 100000
     $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace new_tablespace"
-    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace default" --copy-data-filter "src.action_time > '2026-01-01'"
+    $ pg_tat -h 127.0.0.1 -p 5432 -d mydb -c "alter table mytable set tablespace pg_default" --copy-data-filter "src.action_time > '2026-01-01'"
